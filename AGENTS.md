@@ -47,10 +47,14 @@ adb shell "cat /sdcard/Download/root.log"
 ```
 
 **铁律**：
+- **每行必须自己 `>> /sdcard/Download/root.log 2>&1`**。服务只写自己的 `rc` 行，**不捕获脚本 stdout** —— 不加重定向，日志里只剩 `=== rc=0 ===`，你会以为命令没执行。这一条我实测踩过。
+- 脚本必须是 **纯 LF**，不能有 `\r`（Git-Bash 容易带 CRLF）。否则 `rm -f xxx\r` 删不掉文件，判断全错。
 - 脚本第一行 `rm -f /sdcard/Download/root.log`，避免读到上一次的结果。
 - 每条可能失败的命令后面跟 `echo "EXIT=$?" >> root.log`。
-- 用 `>> root.log 2>&1` 重定向，**不要**指望 shell 输出能传回 adb。
 - 写脚本用 PC 端 `printf`/Write 生成，**不要**在电视上生成。
+- 直接 `source scripts/lib.sh`，用它的 `root_exec`（已处理上面两件事）。
+
+**版本查询的坑**：`dumpsys package com.stv.appdaemon` 会输出**两段**（`/data` 覆盖版 + `/system` 原版），`grep -m1` 只取第一条才对。取错了会误判成"装的是原版"。
 
 ---
 
@@ -205,6 +209,8 @@ adb shell logcat -d | grep -c "StackOverflowError"          # 应为 0
 | 停 `com.stv.helper.main` 会连带 helper.service | 不会，可以安全停 UI。 |
 | tvmaster.db 的 applevel 白名单能长期生效 | 会被 TV管家 定期重建（网络配置覆盖），且 helper.service 正常后不再需要。 |
 | `keyevent 178` 是信号源键 | 是 **269**。 |
+| Android 4.3 对同版本 `pm install -r` 会正常覆盖 | 会返回 `INSTALL_FAILED_INVALID_URI`。要覆盖就抬 versionCode。 |
+| `dumpsys package <系统包>` 只输出一段 | 输出**两段**（/data + /system），取第一条才是生效的。 |
 
 ---
 

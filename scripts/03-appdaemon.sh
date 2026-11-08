@@ -16,11 +16,22 @@ check_conn
 
 c_ylw "== 安装改过的 appdaemon =="
 
-OLD_VC=$(adb_ shell "dumpsys package com.stv.appdaemon 2>/dev/null | grep -m1 versionCode" | tr -d '\r' | grep -o '[0-9]*' | head -1)
-SYS_VC=$(adb_ shell "pm dump /system/app/AppDaemon.apk 2>/dev/null | grep -m1 versionCode" | tr -d '\r' | grep -o '[0-9]*' | head -1)
+# 版本查询走 uid1000。
+# 注意：dumpsys package 会输出两段（/data 覆盖版 + /system 原版），
+# 手工取第一条 codePath 才是"当前生效的那个"。
+if [ "$DRY_RUN" = "0" ]; then
+  VCINFO=$(root_sh "echo -n 'path: '; pm path com.stv.appdaemon; dumpsys package com.stv.appdaemon 2>&1 | grep -m1 versionCode")
+  c_dim "当前生效："
+  printf '%s\n' "$VCINFO" | grep -vE '^(=== rc|=== done)' | sed 's/^/    /'
+  CUR_VC=$(printf '%s' "$VCINFO" | grep -o 'versionCode=[0-9]*' | head -1 | cut -d= -f2)
+  if [ -n "$CUR_VC" ] && [ "$CUR_VC" -ge 2019060619 ] 2>/dev/null; then
+    c_grn "已安装改过的版本 (versionCode=$CUR_VC)，无需重装"
+    exit 0
+  fi
+fi
 
-c_dim "当前: ${OLD_VC:-未知}   /system: ${SYS_VC:-未知}"
-c_dim "新版 versionCode 必须 > /system，否则重启会被压回原版"
+c_dim "新版 versionCode 必须 > /system 原版（2019060618），否则重启会被压回原版"
+c_dim "（若报 INSTALL_FAILED_UPDATE_INCOMPATIBLE，说明签名不匹配，见 docs/03-appdaemon.md）"
 
 install_apk "$APK" || { c_red "安装失败"; exit 1; }
 

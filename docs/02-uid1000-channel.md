@@ -76,12 +76,63 @@ adb shell "cat /sdcard/Download/root.log"
 
 | 规则 | 原因 |
 |---|---|
+| **每行都必须自己 `>> /sdcard/Download/root.log 2>&1`** | **服务只写它自己的 `rc` 行，不捕获脚本 stdout。** 不加重定向 = 输出丢失，日志里只剩 `=== rc=0 ===` 和 `=== done ===` |
 | 脚本第一行 `rm -f /sdcard/Download/root.log` | 否则读到上一次的结果，误判 |
-| 每条命令后 `echo "EXIT=$?" >> root.log` | 服务不会把 exit code 传回来 |
-| 全部输出重定向到文件 | adb shell 拿不到子进程 stdout |
+| 每条命令后 `echo "EXIT=$?"` 也要重定向 | 服务不会把 exit code 传回来 |
+| 脚本必须是 **LF 换行，不能有 `\r`** | Git-Bash 默认写 CRLF，`sh` 会把 `\r` 当参数一部分 → `rm -f xxx\r` 删不掉文件，后续判断全错 |
 | 不用 `head`/`wc`/`sed`/`printf`/here-doc | **电视的 toybox 极简，这些都不存在** |
 | 写文件在 PC 端做 | 电视上没有可用文本编辑器 |
 | `sleep 6~12` 再读 | 太早读会拿到空文件 |
+
+### 正确 vs 错误示例
+
+```bash
+# ❌ 错：输出全丢
+adb push script.sh //sdcard/Download/root.sh
+# script.sh 内容：
+#   pm list packages -d
+# 结果：root.log 里只有 "=== rc=0 ==="
+
+# ✅ 对：每行自己重定向
+# script.sh 内容：
+#   rm -f /sdcard/Download/root.log
+#   pm list packages -d >> /sdcard/Download/root.log 2>&1
+#   echo "EXIT=$?" >> /sdcard/Download/root.log
+```
+
+### CRLF 陷阱
+
+Git-Bash 的 `printf` 默认输出 LF，但如果你从 Windows 编辑器/某些工具生成脚本，可能带 CRLF：
+
+```bash
+# 症状：日志里出现 \r\r\n，或 rm 明明执行了却没删掉旧日志
+adb shell "cat /sdcard/Download/root.sh" | od -c | head
+
+# 修：写之前过滤
+printf '%s\n' "$SCRIPT" | tr -d '\r' > root.sh
+```
+
+本仓库 `scripts/lib.sh` 的 `root_exec` 已经处理了这两件事（自动补重定向 + 去 CRLF），直接用它就行。
+
+### 怎么确认通道是好的
+
+```bash
+root_exec <<'EOF'
+echo "alive"
+dumpsys package com.stv.appdaemon 2>&1 | grep -m1 versionCode
+EOF
+```
+
+期望输出（顺序不定）：
+
+```
+alive
+    versionCode=2019060620 targetSdk=22
+=== rc=0 ===
+=== done ===
+```
+
+如果只有 `=== rc=0 ===` / `=== done ===`，说明重定向没加。
 
 实测 `wc` 不存在：
 
