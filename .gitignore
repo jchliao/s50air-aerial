@@ -1,0 +1,26 @@
+# 直接构建，不要提交
+tools/
+*.class
+classes/
+classes.dex
+unsigned.apk
+MANIFEST.MF
+CERT.SF
+CERT.RSA
+user.key
+user.x509.pem
+entries/
+__pycache__/
+*.pyc
+
+# 大文件 / 临时
+bt.zip
+*.log
+*.tmp
+/tmp/
+
+# 乐视原厂代码的修改版，仅本机自用，不随仓库分发
+apk/appdaemon-*.apk
+apk/ssm-*.apk
+# Aerial 官方 APK 请从上游下载
+apk/aerial-lite.apk
