@@ -91,6 +91,16 @@ pm install -r tvhelper.apk
 
 > 这一步是**先有鸡还是先有蛋**：通道装好之前，`adb install` 会直接 `Killed`。
 
+装完立刻做三件事，否则装机时给的 `INSTALL_PACKAGES` 之类会被当作用户应用限权：
+
+```bash
+# 1. 确认 uid（dumpsys 里看 sharedUser 是不是 android.uid.system）
+adb shell dumpsys package com.tvhelper.root | grep -E "sharedUser|codePath|versionCode"
+
+# 2. 跑一次验证（下一节）
+# 3. 成功后再继续后面的改造
+```
+
 ## 验证
 
 ```bash
