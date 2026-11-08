@@ -6,6 +6,15 @@
 
 ## 0. 先做体检（不要跳过）
 
+**连不上先开 ADB**。S50 Air 的开法不是"连点版本号"，是遥控器序列：
+
+```
+按【信号源】键 → 弹出信号源页面 → 依次按 1、4、7
+→ 信号源页面自动消失 = ADB 已开启（端口 5555）
+```
+
+如果窗口没消失就是没进去，重来一次（中间别按别的键）。开启后可以 `adb disconnect` 关掉，下次需要再按一遍。
+
 ```bash
 adb connect <IP>:5555 && adb devices          # 常掉，每条命令前都 connect 一次
 adb shell getprop ro.build.version.sdk        # 期望 18

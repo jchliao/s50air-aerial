@@ -61,7 +61,11 @@ check_conn() {
   st=$($ADB_BIN connect "$TV_IP:5555" >/dev/null 2>&1; MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" devices | grep -c "$TV_IP:5555[[:space:]]*device")
   if [ "$st" -eq 0 ]; then
     c_red "无法连接 $TV_IP:5555"
-    c_dim "排查：电视是否开机 / 是否同网段 / ADB 是否开启（乐视：设置→关于→连点版本号）"
+    c_dim "排查顺序："
+    c_dim "  1. 电视是否开机、是否和电脑同网段"
+    c_dim "  2. ADB 是否开启 —— S50 Air：按遥控器【信号源】键，在信号源页面依次按 1、4、7"
+    c_dim "     信号源页面自动消失 = 已开启（端口 5555）"
+    c_dim "  3. 电视 IP 是否变了（路由器里查一下）"
     exit 1
   fi
   c_grn "已连接 $TV_IP"

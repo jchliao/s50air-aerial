@@ -4,6 +4,36 @@
 
 ---
 
+## 连不上电视
+
+### `adb devices` 是空的 / `unable to connect`
+
+**先确认 ADB 到底开没开**。S50 Air 的开法是遥控器序列，不在设置里：
+
+```
+按【信号源】键 → 信号源页面弹出 → 依次按 1、4、7
+→ 页面自动消失 = ADB 已开（端口 5555）
+```
+
+没消失就重来，中间不要按别的键。
+
+**再确认网络**：
+```bash
+ping <电视IP>
+adb connect <电视IP>:5555
+```
+
+**其他常见原因**：
+- 电视的 IP 变了（路由器 DHCP 重新分配）→ 去路由器后台查
+- 电脑和电视不在同一网段 / 电视连的是 5G 而电脑在 2.4G 的隔离网络
+- 有另一个 adb server 占着端口 → `adb kill-server && adb start-server`
+
+### 能连上但命令全失败 / `device offline`
+
+`adb disconnect` 再 `adb connect`。这条通道在乐视固件上很容易掉，所以 `scripts/lib.sh` 里每条命令前都会自动 connect 一次。
+
+---
+
 ## 主页键
 
 ### 按主页键黑屏 / 没反应 / 卡一下才回来
