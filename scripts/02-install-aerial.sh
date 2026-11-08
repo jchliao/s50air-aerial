@@ -12,7 +12,6 @@ check_conn
 
 c_ylw "== 安装 Aerial Lite =="
 c_dim "$APK"
-c_dim "$(aapt_path 2>/dev/null || true)"
 
 # 版本号对比
 if command -v aapt >/dev/null 2>&1; then

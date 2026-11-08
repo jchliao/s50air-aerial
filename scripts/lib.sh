@@ -8,6 +8,7 @@ TV_IP="${TV_IP:-}"
 DRY_RUN="${DRY_RUN:-1}"      # 默认 dry-run，必须显式 DRY_RUN=0 才真执行
 REMOTE_DIR="/sdcard/Download"
 ROOT_LOG="$REMOTE_DIR/root.log"
+INSTALL_MODE="silent"        # silent = pm install；installer = 系统安装器弹窗（install_apk 会自动改）
 
 c_red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 c_grn()   { printf '\033[32m%s\033[0m\n' "$*"; }
@@ -100,12 +101,53 @@ root_exec() {
 # 单条命令走 uid1000（多参数会以空格拼接，内部引号请自行转义或用 root_exec heredoc）
 root_sh() { printf '%s\n' "$*" | tr -d '\r' | root_exec; }
 
+# 拉起电视自带的系统安装器（弹窗，需要人在遥控器上点"安装"）
+#
+# 为什么"先传后装"：uid 2000 的 adb shell 虽然装不了包（pm install 被 Killed），
+# 但把文件 push 到 /sdcard 和拉起 Activity 都不需要特殊权限 ——
+# 真正需要 INSTALL_PACKAGES 的是"静默安装"这一步，交给系统安装器用 SystemUI 身份跑就行。
+#
+# 坑：必须 --user 0。不加会报
+#   Permission Denial: startActivity asks to run as user -2 but is calling from user 0;
+#   this requires android.permission.INTERACT_ACROSS_USERS_FULL
+install_via_installer() {
+  local apk="$1"
+  local remote="${2:-$REMOTE_DIR/_install.apk}"
+  [ -f "$apk" ] || { c_red "找不到 $apk"; return 1; }
+
+  if [ "$DRY_RUN" = "1" ]; then
+    c_ylw "[dry-run] 推送 $apk → $remote，然后拉起系统安装器"
+    c_dim "    am start --user 0 -a android.intent.action.VIEW \\"
+    c_dim "      -d file://$remote -t application/vnd.android.package-archive"
+    return 0
+  fi
+
+  c_dim "推送 $apk ..."
+  MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" push "$(win_path "$apk")" "$remote" >/dev/null || {
+    c_red "推送失败"; return 1; }
+
+  local out
+  out=$(adb_ shell "am start --user 0 -a android.intent.action.VIEW -d file://$remote -t application/vnd.android.package-archive" 2>&1)
+  if printf '%s' "$out" | grep -q "Permission Denial"; then
+    c_red "拉起安装器被拒（缺 --user 0 或电视固件改过）"
+    printf '%s\n' "$out" | sed 's/^/    /'
+    return 1
+  fi
+
+  local pkgnum
+  pkgnum=$(printf '%s' "$out" | grep -o 'dat=file://[^ ]*' | head -1)
+  c_grn "已拉起系统安装器${pkgnum:+  ($pkgnum)}"
+  c_ylw "→ 请在电视上用遥控器点「安装」/「下一步」完成"
+  c_dim "  装完确认：adb shell pm list packages | grep <包名>"
+  return 0
+}
+
 # 检查是否有 uid1000 通道
 have_channel() {
   adb_ shell pm list packages 2>/dev/null | grep -q "com.tvhelper.root"
 }
 
-# 安装 APK（自动选路径）
+# 安装 APK（三级降级：uid2000 静默 → uid1000 静默 → 系统安装器弹窗）
 install_apk() {
   local apk="$1"
   [ -f "$apk" ] || { c_red "找不到 $apk"; return 1; }
@@ -117,22 +159,21 @@ install_apk() {
   MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" push "$(win_path "$apk")" "$REMOTE_DIR/_install.apk" >/dev/null || return 1
 
   local out
-  # 先试 uid2000
+  # 1) 先试 uid2000 静默安装
   out=$(adb_ shell "pm install -r $REMOTE_DIR/_install.apk" 2>&1)
   if printf '%s' "$out" | grep -q "Success"; then
     c_grn "安装成功 (uid2000)"
     return 0
   fi
-  # uid2000 被 Killed / 无权限 → 走 uid1000
+  # 2) uid2000 被 Killed / 无权限 → 走 uid1000 通道静默安装
   if have_channel; then
     c_dim "uid2000 不通，走 uid1000 通道 ..."
     out=$(root_sh "pm install -r $REMOTE_DIR/_install.apk")
-  fi
-  printf '%s\n' "$out" | sed 's/^/    /'
-
-  if printf '%s' "$out" | grep -q "Success"; then
-    c_grn "安装成功 (uid1000)"
-    return 0
+    printf '%s\n' "$out" | sed 's/^/    /'
+    if printf '%s' "$out" | grep -q "Success"; then
+      c_grn "安装成功 (uid1000)"
+      return 0
+    fi
   fi
   # Android 4.3 对"同版本覆盖"会返回 INVALID_URI，实际是已安装
   if printf '%s' "$out" | grep -q "INVALID_URI"; then
@@ -140,6 +181,15 @@ install_apk() {
     c_dim "若确认要覆盖，先手动卸载再装，或抬高 versionCode。"
     return 0
   fi
+  # 3) 静默都不行 → 交给系统安装器（需要人点确认）
+  if printf '%s' "$out" | grep -qiE "Killed|Permission denial|INSTALL_FAILED_SHARED_USER"; then
+    c_ylw "静默安装不可用，改用系统安装器（需要遥控器确认）"
+    INSTALL_MODE="installer"
+    install_via_installer "$apk" "$REMOTE_DIR/_install.apk" || return 1
+    c_dim "安装器已弹出，脚本无法等待结果；请装完后重新跑本脚本核对版本。"
+    return 0
+  fi
+  printf '%s\n' "$out" | sed 's/^/    /'
   c_red "安装失败"
   return 1
 }

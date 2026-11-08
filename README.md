@@ -32,19 +32,23 @@ export TV_IP=192.168.5.9
 # 0. 确认能连上（乐视 adb 常在 5555）
 adb connect $TV_IP:5555 && adb devices
 
-# 1. 先停广告包（最安全，可逆）
+# 1. 装 uid1000 通道（唯一需要遥控器的一步，之后全静默）
+#    脚本会 push → 拉起系统安装器 → 你去电视点"安装" → 自动实测 uid=1000
+DRY_RUN=0 bash scripts/00-bootstrap.sh apk/tvhelper.apk
+
+# 2. 停广告包（最安全，可逆）
 bash scripts/01-debloat.sh a          # 先看 dry-run
 DRY_RUN=0 bash scripts/01-debloat.sh all
 
-# 2. 装 Aerial Lite 桌面（APK 从上游下载，见 apk/README.md）
+# 3. 装 Aerial Lite 桌面（APK 从上游下载，见 apk/README.md）
 DRY_RUN=0 bash scripts/02-install-aerial.sh apk/aerial-lite.apk
 
-# 3. 主页键接管（二选一）
-#    3a. 最简：系统会问"用哪个桌面"，选 Aerial + 始终 —— 多数固件够用
-#    3b. 彻底：装改过的 appdaemon（需要自己构建，见 docs/03-appdaemon.md）
+# 4. 主页键接管（二选一）
+#    4a. 最简：系统会问"用哪个桌面"，选 Aerial + 始终 —— 多数固件够用
+#    4b. 彻底：装改过的 appdaemon（需要自己构建，见 docs/03-appdaemon.md）
 DRY_RUN=0 bash scripts/03-appdaemon.sh path/to/appdaemon-v3.apk
 
-# 4. 可选：HDMI 直达磁贴
+# 5. 可选：HDMI 直达磁贴
 DRY_RUN=0 bash scripts/04-hdmi-entries.sh
 ```
 

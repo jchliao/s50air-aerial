@@ -14,6 +14,74 @@
 
 而 `adb root` 不可用（eng build 才有），所以需要一条**以 uid 1000 执行命令**的通道。
 
+> **但要先问一句：你真的需要这个通道吗？**
+> 触发一个 UI 界面（比如"安装 APK"）是**弹个窗让人点**，不是静默提权，uid 2000 自己就能干。见下面的「不需要 root 的第三条路」。只有要**静默完成**（不点确认）时才必须用 uid 1000 通道。
+
+## 不需要 root 的第三条路：把动作变成"用户点的"
+
+uid 2000 干不了的事里，有一类其实不需要权限 —— **拉起一个界面，让用户在 GUI 上自己点**。因为真正的权限判定发生在系统应用那边（安装器 / 设置 / 文件管理器），不是你的 shell。
+
+### 安装 APK：先 push，再拉系统安装器
+
+```bash
+# 1. 推文件（uid 2000 完全够）
+MSYS2_ARG_CONV_EXCL="*" adb push app.apk //sdcard/Download/app.apk
+
+# 2. 拉起系统安装器（关键是 --user 0）
+adb shell "am start --user 0 -a android.intent.action.VIEW \
+  -d file:///sdcard/Download/app.apk \
+  -t application/vnd.android.package-archive"
+
+# 3. 电视上出现安装界面 → 遥控器点「安装」
+```
+
+实测这个电视的安装器：
+
+```
+com.android.packageinstaller/.PackageInstallerActivity
+  ← file:// + application/vnd.android.package-archive
+  ← content:// + 同上
+  ← action INSTALL_PACKAGE
+```
+
+**必须加 `--user 0`**，否则：
+
+```
+java.lang.SecurityException: Permission Denial: startActivity asks to run as user -2
+  but is calling from user 0; this requires android.permission.INTERACT_ACROSS_USERS_FULL
+```
+
+这是因为 `am` 默认 `--user current` 解析成了 `-2`（USER_CURRENT），跨用户启动需要额外权限。指定 `0` 就绕过了。
+
+**什么时候用这条路**：**只有第一次装 `com.tvhelper.root` 本身时**。之后所有包都走通道静默安装，不用再碰遥控器。
+
+这是本方案固定的执行顺序：
+
+```
+① 装 tvhelper    →  push + 安装器弹窗，遥控器点一次（唯一一次）
+② 装其他所有包   →  全部 tvhelper 静默 pm install -r
+```
+
+`scripts/00-bootstrap.sh` 就是 ①；② 由 `scripts/lib.sh` 的 `install_apk()` 自动完成（它会先试 uid2000、再试 uid1000，只有都失败才退回安装器）。
+
+### 停用不给停的包 → 没辙
+
+停用组件需要 `CHANGE_COMPONENT_ENABLED_STATE`，没有"弹个窗让用户确认"的替代路径。这个只能走 uid 1000。
+
+### 结论表
+
+| 想做的事 | uid 2000 够吗 | 怎么走 |
+|---|---|---|
+| push 文件到 `/sdcard` | ✅ | 直接 push |
+| **装 APK（弹安装器）** | ✅ | `am start --user 0 -a VIEW` + file:// |
+| 装 APK（静默无感） | ❌ | uid 1000 通道 `pm install` |
+| 停用/启用系统包 | ❌ | uid 1000 通道 `pm disable-user` |
+| `pm grant` 权限 | ❌ | uid 1000 通道 |
+| 模拟按键注入 | ❌ | uid 1000 通道 |
+| 拉起设置/应用详情页 | ✅ | `am start --user 0 -a android.settings.APPLICATION_DETAILS_SETTINGS -d package:xxx` |
+
+`scripts/lib.sh` 的 `install_apk()` 已经实现了三级降级：`pm install`(uid2000) → `pm install`(uid1000) → 系统安装器弹窗。
+
 ## 原理
 
 系统里预装的小工具应用 `com.tvhelper.root` 声明了一个 **以 `android:sharedUserId="android.uid.system"` 运行**的 Service，它读取 `/sdcard/Download/root.sh` 并 `sh` 执行，把输出重定向到 `/sdcard/Download/root.log`。
@@ -153,11 +221,11 @@ alive
 
 1. `source/tvhelper/src/com/tvhelper/root/Shell.java` —— 照抄或直接用
 2. 用**平台签名**签（和 appdaemon 同一把密钥）
-3. 装机：此时 uid 2000 还装不了包 → 只能 U 盘 + 电视文件管理器，或用电视上已有的侧载入口
+3. 装机走「先 push 再拉系统安装器」：`DRY_RUN=0 bash scripts/00-bootstrap.sh apk/tvhelper.apk`
 
 详见 `source/tvhelper/README.md`。
 
-> **先有鸡还是先有蛋**：这个通道存在的意义就是"装包"，所以它的安装不能靠它自己。
+> **为什么它必须"弹窗装"而后面可以静默**：这个通道存在的意义就是静默装包，所以它自己不能靠静默装 —— 但它可以靠系统安装器装（见上一节）。装好之后，静默能力才出现。**只此一次。**
 
 ### 三个实现细节（改的时候别"优化"掉）
 

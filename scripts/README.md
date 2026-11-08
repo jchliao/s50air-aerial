@@ -5,13 +5,17 @@
 ```bash
 export TV_IP=192.168.5.9
 
-bash scripts/01-debloat.sh a          # 预演 A 批停用
+# 第一步永远是它（后面所有脚本都依赖这个通道）
+DRY_RUN=0 bash scripts/00-bootstrap.sh apk/tvhelper.apk
+
+bash scripts/01-debloat.sh a             # 预演 A 批停用
 DRY_RUN=0 bash scripts/01-debloat.sh a   # 真执行
 ```
 
 | 脚本 | 作用 | 可回滚 |
 |---|---|---|
-| `lib.sh` | 公共函数（连接、uid1000 通道、安装、确认） | — |
+| `lib.sh` | 公共函数（连接、uid1000 通道、三级安装降级、确认） | — |
+| `00-bootstrap.sh [apk]` | **第一步**：装 uid1000 通道。唯一需要遥控器点确认的一步 | ✅ 卸载 |
 | `01-debloat.sh [a\|b\|c\|all]` | 停用广告/上报/内容包 | ✅ `pm enable` |
 | `02-install-aerial.sh` | 装 Aerial + 授权 | ✅ 卸载 |
 | `03-appdaemon.sh` | 装改过的 appdaemon（主页键） | ✅ `pm uninstall` 回原版 |
@@ -35,4 +39,4 @@ Windows / Git Bash 用户：脚本已经处理了 `MSYS2_ARG_CONV_EXCL`（否则
 
 ## 顺序
 
-严格按 01 → 02 → 03 → (04)。`03` 依赖 `02`（appdaemon 要指向 Aerial 的 ComponentName）。`02` 之后先按一次主页键，如果能弹窗选默认桌面，就**不需要** `03`。
+严格按 **00 → 01 → 02 → 03 → (04)**。`00` 装好 uid1000 通道之前，其余脚本会全部失败。`03` 依赖 `02`（appdaemon 要指向 Aerial 的 ComponentName）。`02` 之后先按一次主页键，如果能弹窗选默认桌面，就**不需要** `03`。

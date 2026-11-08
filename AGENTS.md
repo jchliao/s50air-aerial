@@ -38,7 +38,49 @@ adb shell id                                  # uid=2000 = shell，权限受限
 
 电视上有一个极简 Service `com.tvhelper.root`，以 `android:sharedUserId="android.uid.system"` + 平台签名运行，所以进程 uid = 1000。收到 `am startservice` 就用 `/system/bin/sh` 跑一遍 `/sdcard/Download/root.sh`，输出写 `/sdcard/Download/root.log`。
 
-它不是乐视原厂的，**源码在本仓库 `source/tvhelper/`**（`Shell.java` 73 行 + manifest + 构建命令）。电视上如果还没有这个包，先把它装上 —— 但注意装机这一步没法靠它自己（见该目录 README 的「先有鸡还是先有蛋」）。
+它不是乐视原厂的，**源码在本仓库 `source/tvhelper/`**（`Shell.java` 73 行 + manifest + 构建命令）。
+
+### 装它的顺序是死的：先"弹安装器"，之后全静默
+
+```
+① 装 tvhelper 本身   →  必须先 push + am start 拉起系统安装器，人在电视上点一次
+                        （此时还没有提权通道，pm install 会被 Killed）
+② 装其他所有包       →  全部走 tvhelper 的 pm install -r，无感
+```
+
+**①** 一行搞定，唯一需要遥控器的一次：
+
+```bash
+TV_IP=<IP> DRY_RUN=0 bash scripts/00-bootstrap.sh apk/tvhelper.apk
+```
+
+它内部做的是：
+
+```bash
+adb push tvhelper.apk //sdcard/Download/tvhelper.apk
+adb shell "am start --user 0 -a android.intent.action.VIEW \
+  -d file:///sdcard/Download/tvhelper.apk -t application/vnd.android.package-archive"
+```
+
+> **`--user 0` 不能省**。不加会报 `Permission Denial: startActivity asks to run as user -2 but is calling from user 0; this requires INTERACT_ACROSS_USERS_FULL`。
+
+**②** 之后 `scripts/lib.sh` 的 `install_apk()` 三级降级会自动选对路：`pm install`(uid2000) → `pm install`(uid1000 通道) → 系统安装器（兜底）。正常情况走到第二级就 `Success`。
+
+### 验收标准是"实测 uid"，不是查 manifest
+
+```bash
+# 错误做法：uid 2000 没有 DUMP 权限，dumpsys package 返回空，看起来像签名不对
+# adb shell dumpsys package com.tvhelper.root | grep sharedUser     ← 别这么验
+
+# 正确做法：让它跑一次，看拿到的 uid
+printf 'echo alive; id\n' > root.sh
+MSYS2_ARG_CONV_EXCL="*" adb push root.sh //sdcard/Download/root.sh
+adb shell "am startservice --user 0 -n com.tvhelper.root/.Shell"
+sleep 8 && adb shell "cat /sdcard/Download/root.log"
+# 看到 uid=1000(system) 才算通
+```
+
+> 这个坑我实测踩过：`00-bootstrap.sh` 最初用 `dumpsys` 核验，结果空输出被判成"签名不对"，白忙一轮。
 
 **用法**：把脚本写到 `/sdcard/Download/root.sh`，触发服务，读 `/sdcard/Download/root.log`。
 
@@ -63,6 +105,15 @@ adb shell "cat /sdcard/Download/root.log"
 ---
 
 ## 3. 改造顺序（严格按序，每步验证）
+
+### 3.0 装 uid1000 通道（一切的前提，唯一需要遥控器的一步）
+
+```bash
+TV_IP=<IP> DRY_RUN=0 bash scripts/00-bootstrap.sh apk/tvhelper.apk
+```
+
+脚本会自动：push → 拉起系统安装器 → 提示你到电视上点"安装" → 实测 `uid=1000` 才算通过。
+**这一步没通过之前，后面全部会失败**，别往下走。
 
 ### 3.1 停用广告/上报包（最先做，风险最低）
 

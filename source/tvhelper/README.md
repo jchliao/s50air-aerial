@@ -79,27 +79,52 @@ python ../tools/sign_apk.py out/base.apk out/dex/classes.dex tvhelper.apk
 - `android-14/lib/d8.jar`（build-tools 自带）是 redirector，`com.android.tools.r8.D8` 类不在里面。要单独下 `r8.jar`
 - 签名脚本从**当前工作目录**找 `platform.key`，先 `cd` 到密钥所在目录再跑
 
-## 安装
+## 安装：只有这一次需要人在电视上点
+
+**整个改造里唯一需要遥控器点确认的一步就是它。** 因为此时还没有提权通道，`pm install` 会被 `Killed`；但 push 文件和拉起界面都不需要权限，所以走"系统安装器"。
 
 ```bash
-# 此时 shell 还没有权限装包，所以第一条路只能是：
-#   A. 电视上的文件管理器打开 APK 手动安装
-#   B. U 盘拷进去，用乐视预装的"文件管理"
-#   C. 如果电视上有别的提权手段，用它
-pm install -r tvhelper.apk
+# 1. 推文件（uid 2000 完全够）
+MSYS2_ARG_CONV_EXCL="*" adb push tvhelper.apk //sdcard/Download/tvhelper.apk
+
+# 2. 拉起系统安装器（关键是 --user 0，不加会报 INTERACT_ACROSS_USERS_FULL）
+adb shell "am start --user 0 -a android.intent.action.VIEW \
+  -d file:///sdcard/Download/tvhelper.apk \
+  -t application/vnd.android.package-archive"
+
+# 3. 电视上出现安装界面 → 遥控器点「安装」→「打开」→「安装」
 ```
 
-> 这一步是**先有鸡还是先有蛋**：通道装好之前，`adb install` 会直接 `Killed`。
-
-装完立刻做三件事，否则装机时给的 `INSTALL_PACKAGES` 之类会被当作用户应用限权：
+装完核实身份（**必须**看到 `android.uid.system`，否则后面全部无效）：
 
 ```bash
-# 1. 确认 uid（dumpsys 里看 sharedUser 是不是 android.uid.system）
 adb shell dumpsys package com.tvhelper.root | grep -E "sharedUser|codePath|versionCode"
-
-# 2. 跑一次验证（下一节）
-# 3. 成功后再继续后面的改造
 ```
+
+期望类似：
+
+```
+sharedUser=android.uid.system
+codePath=/data/app/com.tvhelper.root-1.apk
+versionCode=1
+```
+
+然后跑一次验证（下一节）。**验证通过之后，剩下的所有包都走它静默安装，不用再碰遥控器。**
+
+> ### 就到这儿，剩下都静默
+
+`tvhelper` 装好之后，**后面所有包都走它**，不用再碰遥控器：
+
+```bash
+# scripts/lib.sh 的 install_apk() 自动选路：
+#   1. pm install (uid2000)     → 能成就成
+#   2. pm install (uid1000 通道) → 正常情况走到这级就 Success
+#   3. 系统安装器弹窗            → 兜底，只在通道坏掉时发生
+```
+
+所以 `scripts/02`、`03`、`04` 你直接跑就行，它们内部全是静默安装。
+
+> `appdaemon` 这类要覆盖 `/system/app` 原版的包**必须**走通道的 `pm install -r`（需要 `INSTALL_REPLACE_EXISTING` 对系统包生效 + 平台签名），安装器界面走"覆盖安装"反而更绕。
 
 ## 验证
 

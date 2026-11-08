@@ -20,6 +20,11 @@ fi
 for n in 1 2 3; do
   c_dim "-- HDMI $n --"
   install_apk "../apk/hdmi$n.apk" || c_red "hdmi$n 安装失败"
+  # 走系统安装器时每次都要人在电视上点确认，装完等一下再投下一个
+  [ "$DRY_RUN" = "0" ] && [ "$INSTALL_MODE" = "installer" ] && {
+    c_ylw "请在电视上点「安装」后按回车继续"
+    read -r _
+  }
 done
 
 [ "$DRY_RUN" = "1" ] && exit 0
