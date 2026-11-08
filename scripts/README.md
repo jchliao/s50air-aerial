@@ -25,10 +25,11 @@ DRY_RUN=0 bash scripts/01-debloat.sh a   # 真执行
 | `TV_IP` | 必填 | 电视局域网 IP |
 | `DRY_RUN` | `1` | `0` 才真执行 |
 | `ROOT_WAIT` | `8` | uid1000 通道等待秒数，慢的机器调大 |
+| `ADB` | （空） | adb 可执行文件路径；不填则用 PATH 里的 `adb` |
 
 ## 前置
 
-`adb` 在 PATH 里（或用 `aerial-tools/platform-tools/adb.exe` 的绝对路径）。
+`adb` 要么在 PATH 里，要么用 `ADB=` 指定完整路径（脚本还会自动找 `~/platform-tools/adb`、Android/Sdk 默认位置）。都找不到会直接提示下载地址，不会跑到一半才失败。
 
 Windows / Git Bash 用户：脚本已经处理了 `MSYS2_ARG_CONV_EXCL`（否则 `/sdcard/x` 会被改写成 `C:/Program Files/Git/sdcard/x`）。
 

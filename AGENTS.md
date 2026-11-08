@@ -14,6 +14,8 @@ adb shell pm list packages | grep -c package  # 基线：200+ 是原样，130 �
 adb shell id                                  # uid=2000 = shell，权限受限
 ```
 
+**脚本怎么调**：全部是 `TV_IP=<IP> [DRY_RUN=0] [ADB=/path/to/adb] bash scripts/xx.sh`。默认 dry-run，**不加 `DRY_RUN=0` 什么都不改**。
+
 **关键前提判断**：`adb shell id` 是 uid 2000 时，**你没有 `INSTALL_PACKAGES`、不能 `pm disable` 受保护包、不能 `am` 注入按键**。这时必须走 uid 1000 通道（见第 2 节）。如果 `adb root` 可用（uid 0），跳过第 2 节。
 
 ---
@@ -217,8 +219,8 @@ adb shell logcat -d | grep -c "StackOverflowError"          # 应为 0
 ## 7. 出问题怎么办
 
 ```bash
-bash scripts/99-restore.sh <IP>                      # 全恢复
-bash scripts/99-restore.sh <IP> --only-appdaemon     # 只回退 appdaemon
+DRY_RUN=0 bash scripts/99-restore.sh                 # 全恢复
+DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 ```
 
 常见症状对照：

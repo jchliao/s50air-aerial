@@ -20,26 +20,35 @@
 
 **前提**：电视和电脑同局域网，电视已开 ADB（乐视：设置 → 关于 → 连点版本号，或在工程模式开）。
 
+脚本的用法是 `TV_IP=<IP> [DRY_RUN=0] [ADB=/path/to/adb] bash scripts/xx.sh`：
+
+- `TV_IP` 必须给（也可以先 `export TV_IP=192.168.5.9`）
+- **默认 `DRY_RUN=1`，只打印不改动**；确认无误后加 `DRY_RUN=0` 才真执行
+- adb 从 `PATH` 找，找不到再用 `ADB=` 指定完整路径
+
 ```bash
-# 0. 连上（乐视 adb 常在 5555）
-adb connect <TV_IP>:5555 && adb devices
+export TV_IP=192.168.5.9
+
+# 0. 确认能连上（乐视 adb 常在 5555）
+adb connect $TV_IP:5555 && adb devices
 
 # 1. 先停广告包（最安全，可逆）
-bash scripts/01-debloat.sh <TV_IP>
+bash scripts/01-debloat.sh a          # 先看 dry-run
+DRY_RUN=0 bash scripts/01-debloat.sh all
 
 # 2. 装 Aerial Lite 桌面（APK 从上游下载，见 apk/README.md）
-bash scripts/02-install-aerial.sh <TV_IP> apk/aerial-lite.apk
+DRY_RUN=0 bash scripts/02-install-aerial.sh apk/aerial-lite.apk
 
 # 3. 主页键接管（二选一）
 #    3a. 最简：系统会问"用哪个桌面"，选 Aerial + 始终 —— 多数固件够用
-#    3b. 彻底：装改过的 appdaemon（需电视有 uid1000 通道，见 docs/03-appdaemon.md）
-bash scripts/03-appdaemon.sh <TV_IP>
+#    3b. 彻底：装改过的 appdaemon（需要自己构建，见 docs/03-appdaemon.md）
+DRY_RUN=0 bash scripts/03-appdaemon.sh path/to/appdaemon-v3.apk
 
 # 4. 可选：HDMI 直达磁贴
-bash scripts/04-hdmi-entries.sh <TV_IP>
+DRY_RUN=0 bash scripts/04-hdmi-entries.sh
 ```
 
-每一步都先 `dry-run` 打印将要做什么，确认后才执行。
+每一步都先 dry-run 打印将要做什么，确认后才执行。
 
 ## 目录
 
@@ -54,8 +63,9 @@ source/                ← 可复现构建的源码和工具链
 ## 恢复原状
 
 ```bash
-bash scripts/99-restore.sh <TV_IP>          # 恢复全部系统应用、卸载 Aerial
-bash scripts/99-restore.sh <TV_IP> --keep-aerial
+DRY_RUN=0 bash scripts/99-restore.sh                 # 恢复全部系统应用、卸载 Aerial
+DRY_RUN=0 bash scripts/99-restore.sh --keep-aerial   # 只恢复系统应用
+DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon
 ```
 
 `pm uninstall com.stv.appdaemon` 会自动回退到 `/system/app` 原版；所有 `pm disable` 都能 `pm enable` 回来。**没有任何一步是不可逆的。**

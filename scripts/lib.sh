@@ -30,14 +30,34 @@ win_path() {
 
 adb_() {
   # 每次调用前 connect（乐视 adb server 会掉）
-  MSYS2_ARG_CONV_EXCL="*" adb connect "$TV_IP:5555" >/dev/null 2>&1
-  MSYS2_ARG_CONV_EXCL="*" adb "$@"
+  MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" connect "$TV_IP:5555" >/dev/null 2>&1
+  MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" "$@"
+}
+
+# 找到可用的 adb：优先 PATH，其次 ADB 环境变量，最后本机 common 位置
+ADB_BIN="${ADB:-adb}"
+ensure_adb() {
+  if [ "$ADB_BIN" != "adb" ] && [ -x "$ADB_BIN" ]; then return 0; fi
+  if command -v adb >/dev/null 2>&1; then ADB_BIN=adb; return 0; fi
+  local c
+  for c in \
+    "$HOME/platform-tools/adb" \
+    "$HOME/AppData/Local/Android/Sdk/platform-tools/adb.exe" \
+    "/c/platform-tools/adb.exe" \
+    "$PWD/platform-tools/adb.exe"
+  do
+    if [ -x "$c" ]; then ADB_BIN="$c"; return 0; fi
+  done
+  c_red "找不到 adb。请装 platform-tools 并加进 PATH，或用 ADB=/path/to/adb 指定"
+  c_dim "下载：https://developer.android.com/tools/releases/platform-tools"
+  exit 1
 }
 
 check_conn() {
   need_ip
+  ensure_adb
   local st
-  st=$(adb_ devices | grep -c "$TV_IP:5555[[:space:]]*device")
+  st=$($ADB_BIN connect "$TV_IP:5555" >/dev/null 2>&1; MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" devices | grep -c "$TV_IP:5555[[:space:]]*device")
   if [ "$st" -eq 0 ]; then
     c_red "无法连接 $TV_IP:5555"
     c_dim "排查：电视是否开机 / 是否同网段 / ADB 是否开启（乐视：设置→关于→连点版本号）"
@@ -71,7 +91,7 @@ root_exec() {
   fi
 
   printf 'rm -f %s\n%s' "$ROOT_LOG" "$processed" > /tmp/_root.sh
-  MSYS2_ARG_CONV_EXCL="*" adb push "$(win_path /tmp/_root.sh)" "$REMOTE_DIR/root.sh" >/dev/null || return 1
+  MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" push "$(win_path /tmp/_root.sh)" "$REMOTE_DIR/root.sh" >/dev/null || return 1
   adb_ shell "am startservice --user 0 -n com.tvhelper.root/.Shell" >/dev/null 2>&1
   sleep "${ROOT_WAIT:-8}"
   adb_ shell "cat $ROOT_LOG"
@@ -94,7 +114,7 @@ install_apk() {
     return 0
   fi
   c_dim "推送 $apk ..."
-  MSYS2_ARG_CONV_EXCL="*" adb push "$(win_path "$apk")" "$REMOTE_DIR/_install.apk" >/dev/null || return 1
+  MSYS2_ARG_CONV_EXCL="*" "$ADB_BIN" push "$(win_path "$apk")" "$REMOTE_DIR/_install.apk" >/dev/null || return 1
 
   local out
   # 先试 uid2000
