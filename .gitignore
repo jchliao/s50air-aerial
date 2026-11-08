@@ -1,8 +1,8 @@
 # 直接构建，不要提交
-tools/
+/source/entries/tools/
 *.class
-classes/
-classes.dex
+/source/entries/classes/
+/source/entries/classes.dex
 unsigned.apk
 MANIFEST.MF
 CERT.SF
