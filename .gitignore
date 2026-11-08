@@ -9,7 +9,7 @@ CERT.SF
 CERT.RSA
 user.key
 user.x509.pem
-entries/
+/source/entries/entries/
 __pycache__/
 *.pyc
 
