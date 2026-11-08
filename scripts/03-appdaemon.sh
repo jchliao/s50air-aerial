@@ -10,9 +10,30 @@ cd "$(dirname "$0")"
 . ./lib.sh
 
 APK="${1:-../apk/appdaemon-v3.apk}"
-check_conn
 
-[ -f "$APK" ] || { c_red "找不到 $APK"; exit 1; }
+# 先查文件再查连接：缺 APK 是最常见的情况，提示构建步骤比提示"缺少电视 IP"有用
+if [ ! -f "$APK" ]; then
+  c_red "找不到 $APK"
+  cat <<'EOT'
+
+appdaemon 是乐视原厂代码的修改版，不随本仓库分发。你需要自己构建一份：
+
+  1. 反编译电视上的 appdaemon：
+       adb pull /system/app/StvAppDaemon.apk
+       java -jar baksmali.jar d StvAppDaemon.apk -o smali/
+  2. 按 docs/03-appdaemon.md 第 4 节改 DaemonHandler.jumpLauncherNeedCheck
+  3. 回编译 + 抬 versionCode + 用电视的平台密钥签名：
+       java -jar smali.jar a smali -o classes.dex
+       python ../source/tools/bump_version.py StvAppDaemon.apk 2019060620
+       python ../source/tools/sign_apk.py base.apk classes.dex appdaemon-v3.apk
+  4. 重跑本脚本并传入路径：
+       bash scripts/03-appdaemon.sh path/to/appdaemon-v3.apk
+
+EOT
+  exit 1
+fi
+
+check_conn
 
 c_ylw "== 安装改过的 appdaemon =="
 
