@@ -27,7 +27,7 @@ adb connect <TV_IP>:5555 && adb devices
 # 1. 先停广告包（最安全，可逆）
 bash scripts/01-debloat.sh <TV_IP>
 
-# 2. 装 Aerial Lite 桌面
+# 2. 装 Aerial Lite 桌面（APK 从上游下载，见 apk/README.md）
 bash scripts/02-install-aerial.sh <TV_IP> apk/aerial-lite.apk
 
 # 3. 主页键接管（二选一）
@@ -47,7 +47,7 @@ bash scripts/04-hdmi-entries.sh <TV_IP>
 AGENTS.md              ← Agent 入口：完整决策树、所有踩过的坑、验证命令
 docs/                  ← 分主题深挖（原厂架构、smali 改法、包清单、恢复）
 scripts/               ← 幂等可执行脚本（带 dry-run 和回滚）
-apk/                   ← 已构建产物（平台签名 appdaemon / ssm，自签 HDMI 入口）
+apk/                   ← 自签的 HDMI 入口 APK（appdaemon / ssm / Aerial 需自行构建，见 apk/README.md）
 source/                ← 可复现构建的源码和工具链
 ```
 
