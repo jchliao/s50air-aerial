@@ -36,7 +36,9 @@ adb shell id                                  # uid=2000 = shell，权限受限
 
 ## 2. uid 1000 通道（本方案的地基）
 
-电视上预装了一个以 uid 1000 运行的 shell 服务（本仓库假设它已存在；没有的话见 `docs/02-uid1000-channel.md` 自己装）。
+电视上有一个极简 Service `com.tvhelper.root`，以 `android:sharedUserId="android.uid.system"` + 平台签名运行，所以进程 uid = 1000。收到 `am startservice` 就用 `/system/bin/sh` 跑一遍 `/sdcard/Download/root.sh`，输出写 `/sdcard/Download/root.log`。
+
+它不是乐视原厂的，**源码在本仓库 `source/tvhelper/`**（`Shell.java` 73 行 + manifest + 构建命令）。电视上如果还没有这个包，先把它装上 —— 但注意装机这一步没法靠它自己（见该目录 README 的「先有鸡还是先有蛋」）。
 
 **用法**：把脚本写到 `/sdcard/Download/root.sh`，触发服务，读 `/sdcard/Download/root.log`。
 

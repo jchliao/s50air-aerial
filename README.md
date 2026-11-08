@@ -58,6 +58,9 @@ docs/                  ← 分主题深挖（原厂架构、smali 改法、包�
 scripts/               ← 幂等可执行脚本（带 dry-run 和回滚）
 apk/                   ← 自签的 HDMI 入口 APK（appdaemon / ssm / Aerial 需自行构建，见 apk/README.md）
 source/                ← 可复现构建的源码和工具链
+  ├─ tvhelper/         ← uid1000 执行通道（本方案地基，Shell.java 73 行）
+  ├─ entries/          ← HDMI 直达入口构建链
+  └─ tools/            ← 改版本号 / 平台签名 / manifest 检查
 ```
 
 ## 恢复原状

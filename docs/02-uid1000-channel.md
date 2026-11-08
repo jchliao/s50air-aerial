@@ -18,6 +18,8 @@
 
 系统里预装的小工具应用 `com.tvhelper.root` 声明了一个 **以 `android:sharedUserId="android.uid.system"` 运行**的 Service，它读取 `/sdcard/Download/root.sh` 并 `sh` 执行，把输出重定向到 `/sdcard/Download/root.log`。
 
+> 这不是乐视原厂的包，是我们自己造的提权通道，完整源码在 `source/tvhelper/`。名字和乐视 TV管家的 `com.stv.helper.*` 只是巧合，功能无关 —— 别搞混。
+
 核心实现（Java）：
 
 ```java
@@ -145,13 +147,26 @@ alive
 
 ## 电视上没有这个服务怎么办
 
-需要自己做一个：
+**本仓库带完整源码**：`source/tvhelper/`（`Shell.java` 73 行 + manifest + 构建命令 + 验证方法）。
 
-1. 写一个最小的 Service APK（`source/tools/` 里有模板思路）
-2. 用**平台签名**签（和 appdaemon 用同一把密钥）
-3. `adb install`（此时需要能装 —— 如果 uid 2000 装不了，先想办法，比如 U 盘 + 电视文件管理器，或用乐视的应用商店侧载）
+简要步骤：
 
-> 本仓库不自带这个 APK 的源码，因为它和本方案核心目标无关（只是执行通道）。可以照上面 30 行实现自己写。
+1. `source/tvhelper/src/com/tvhelper/root/Shell.java` —— 照抄或直接用
+2. 用**平台签名**签（和 appdaemon 同一把密钥）
+3. 装机：此时 uid 2000 还装不了包 → 只能 U 盘 + 电视文件管理器，或用电视上已有的侧载入口
+
+详见 `source/tvhelper/README.md`。
+
+> **先有鸡还是先有蛋**：这个通道存在的意义就是"装包"，所以它的安装不能靠它自己。
+
+### 三个实现细节（改的时候别"优化"掉）
+
+| 细节 | 原因 |
+|---|---|
+| `implements Runnable`，不用匿名内部类 | dex 只产 1 个 class。老 Dalvik 上匿名内部类偶尔 `NoClassDefFoundError` |
+| `sh -c "…"` 包一层，不直接 exec 脚本 | 重定向由 shell 解释，Java 侧不用建管道读输出，还能拿到脚本真实退出码 |
+| `volatile boolean busy` 防重入 | 连点两次 `am startservice` 不会并发跑两份脚本 |
+| `onCreate` 和 `onStartCommand` 都调 `spawn()` | 服务被复用时 `onCreate` 不会再进，只靠它会在第二次调用时静默不执行 |
 
 ## 安全提醒
 

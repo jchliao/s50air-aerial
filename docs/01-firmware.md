@@ -29,6 +29,12 @@ Android 4.3 (API 18) / Dalvik / LetvUi 3.x
 | `com.stv.commonservice` | CommonService.apk | 公共系统服务 | 保留 |
 | `com.stv.t2.globalsetting` | GlobalSetting.apk | 全局设置 | 保留 |
 
+### 不是原厂的：`com.tvhelper.root`
+
+这个包**不是乐视预装的**，是我们为了绕过 uid 2000 权限限制自己造的通道（`/data/app` 里，4.5 KB，平台签名 + `sharedUserId=android.uid.system`）。它只做一件事：收到 `am startservice` 就把 `/sdcard/Download/root.sh` 以 uid 1000 跑一遍。
+
+源码在 `source/tvhelper/`，原理和构建见 `02-uid1000-channel.md`。名字虽然叫 tvhelper，但和乐视的 TV管家（`com.stv.helper.*`）毫无关系 —— 这是唯一一处容易搞混的地方。
+
 ## 三个按键的完整链路
 
 ### 主页键

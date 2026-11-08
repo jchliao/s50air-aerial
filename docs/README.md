@@ -5,7 +5,7 @@
 | 文件 | 内容 |
 |---|---|
 | `01-firmware.md` | 原厂架构：三个按键的链路、关键系统应用、开机流程、预装恢复机制 |
-| `02-uid1000-channel.md` | 怎么绕过 shell 权限限制（本方案地基） |
+| `02-uid1000-channel.md` | 怎么绕过 shell 权限限制（本方案地基）。**通道本体源码在 `source/tvhelper/`** |
 | `03-appdaemon.md` | **核心**：主页键为什么失灵（递归崩溃）、怎么改、为什么要抬版本号 |
 | `04-packages.md` | 36 个可停用包的完整清单 + 白名单 + 为什么优先 disable 而非 uninstall |
 | `05-helper-service.md` | 为什么停 TV管家服务会让 Aerial 被秒杀 |
