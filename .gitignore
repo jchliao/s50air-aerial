@@ -18,6 +18,8 @@ bt.zip
 *.log
 *.tmp
 /tmp/
+/source/yst-cache/tmpimg/
+/source/yst-cache/yst-cache-original.zip
 
 # 乐视原厂代码的修改版，仅本机自用，不随仓库分发
 apk/appdaemon-*.apk

@@ -275,6 +275,9 @@ adb shell logcat -d | grep -c "StackOverflowError"          # 应为 0
 | `keyevent 178` 是信号源键 | 是 **269**。 |
 | Android 4.3 对同版本 `pm install -r` 会正常覆盖 | 会返回 `INSTALL_FAILED_INVALID_URI`。要覆盖就抬 versionCode。 |
 | `dumpsys package <系统包>` 只输出一段 | 输出**两段**（/data + /system），取第一条才是生效的。 |
+| 小电视图标不显示 = Android 4.3 的 Skia 不支持 VP8X | **证伪**。平台签名探针实测系统 `BitmapFactory.decodeFile()` 能解全部 VP8X 样本（只是 `hasAlpha()` 为 false）。问题在 app 侧解码链路，别去给系统打补丁。见 `docs/06`。 |
+| 改小电视 APK 里的 `.webp` 资源再重签能修图标 | **无效**。图标由网络下发，落在 sdcard 的 Fresco 缓存里（`yst-final.apk` 是打偏靶子的产物，**别装**）。 |
+| 修图标要给系统/native so 打 VP8X 补丁 | **不做**。系统本来能解；改 sdcard 缓存降级为 VP8 即可，可还原、可重复。见 `docs/06`。 |
 
 ---
 
@@ -295,6 +298,7 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 | 改的包被系统压回原版 | `/data` 版本 ≤ `/system` | 同上 |
 | 装 APK 提示 Killed | uid 2000 | 走 uid1000 通道 |
 | 乐视预装的包删了又回来 | `/system/etc/installpkg.conf` | 只 `disable`，不要 `uninstall` |
+| 小电视部分图标空白/破图 | 缓存里的 WebP VP8X 容器 | `bash source/yst-cache/refresh_yst_cache.sh`，见 `docs/06` |
 
 ---
 
@@ -303,3 +307,20 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 - **加更多信号源入口**：`source/entries/build_entries.py` 的 `ENTRIES` 列表加一行（端口串见第 4 节），重跑即可，versionCode 记得 +1。
 - **适配其他乐视机型**：先 `pm path` 找到信号源管理器和 appdaemon，反编译核对 `SourceBase.doSwitchPort` 和 `DaemonHandler.jumpLauncherNeedCheck` 是否同构。包名一样但版本不同的，方法签名可能变。
 - **其他品牌电视**：第 4 节的 extraPort 是乐视私有接口。别家（小米/TCL/创维）大概率也有类似的外部切源入口，可以按同样思路挖，但不要假设参数一样。
+
+---
+
+## 9. 应用侧：小电视图标（独立于桌面改造）
+
+云视听小电视（`com.xiaodianshi.tv.yst`）部分图标空白，原因是网络图标的 Fresco 缓存用了 WebP **VP8X 扩展容器**。做法是**手动打补丁、把 VP8X 降级为简单 VP8**：
+
+```bash
+cd source/yst-cache
+TV_IP=192.168.5.9 ADB=/path/to/adb.exe bash refresh_yst_cache.sh   # pull -> 转换 -> push
+```
+
+- 缓存路径：`/sdcard/Android/data/com.xiaodianshi.tv.yst/cache/ImagePipeLine/v2.ols100.1/*/*.cnt`
+- 无 alpha 的 VP8X：抽出 `VP8 ` chunk 重组 RIFF，**无损**；带 alpha 的（`ALPH`）：ffmpeg 转 RGBA PNG
+- 实测 268 个 VP8X → 0，7.22 MB → 18.01 MB，用户确认有效
+- **不动 APK、不重签、不动系统、不丢登录态**；`--restore` 可还原；新图标复发时重跑即可
+- 系统 Skia 本身能解 VP8X，**不要给系统打补丁**；详见 `docs/06-vp8x-icon-cache.md`

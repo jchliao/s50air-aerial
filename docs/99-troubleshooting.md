@@ -168,6 +168,31 @@ Aerial 在应用变化时会刷新，但 4.x 上偶尔漏掉广播。
 
 ---
 
+## 应用内图标
+
+### 云视听小电视部分图标空白 / 破图
+
+**确认**：把缓存拉到 PC 看魔数（`RIFF....WEBPVP8X` 就是 VP8X）：
+
+```bash
+adb pull /sdcard/Android/data/com.xiaodianshi.tv.yst/cache/ImagePipeLine ./pipe
+python source/yst-cache/patch_yst_cache.py --strategy=png-all   # 仅排障看统计
+```
+
+统计里 `webp-VP8X` 数量不为 0 就中招。注意**重装 app / 改 APK 内 `.webp` 都无效**，图标是网络下发后落在 sdcard 的 Fresco 缓存里。
+
+**修**：
+
+```bash
+cd source/yst-cache
+bash refresh_yst_cache.sh        # pull -> VP8X 降级为 VP8/PNG -> push
+adb shell "am force-stop com.xiaodianshi.tv.yst"   # 重开或重启电视，让 Fresco 重建索引
+```
+
+`bash refresh_yst_cache.sh --restore` 可还原原始缓存。完整原理、实测数据、为什么**不给系统打 VP8X 补丁**见 `docs/06-vp8x-icon-cache.md`。
+
+---
+
 ## 安装
 
 ### `adb install` 输出 `Killed`
