@@ -99,17 +99,20 @@ Fresco 及多数图片库在 Android 上把**静态 WebP 交给系统 `BitmapFac
 
 ## 7. 「要不要打系统补丁」重新评估
 
-上次不打补丁的理由「系统本来能解 VP8X」**已作废**。新评估：
+上次不打补丁的理由「系统本来能解 VP8X」**已作废**。2026-11-15 又做了一轮纯二进制逆向，**结论再次翻案**：
+
+- 靶点已精确到 1 条指令：`SkWEBPImageDecoder::setDecodeConfig` 在 `0x1139BC` 无条件 `mov r1,#1` → `SkBitmap::setIsOpaque(true)`。解码器本身用 `MODE_RGBA`，alpha 已经写进像素，只是被这个标志丢掉。
+- 补丁是 **1 个字节**（`01` → `00`），不需要改 ARM 大段代码、不需要重 dexopt。
+- `/system` 确实 `ro` 且 `CapEff=0`，但拿到了三条写入通道，其中 **OTA（`test-keys` + 公开 testkey）最规范**。
 
 | 方案 | 评价 |
 |---|---|
-| 给 `libskia.so` 的 `SkWEBPImageDecoder` 补 alpha 处理 | 理论上一劳永逸、所有 app 同时受益；但要改 ARM native 代码 / 二进制 patch，改错 bootloop，`/system` 仅剩 15.1M，还要备份与删 dalvik-cache |
-| 替换 `/system/lib/libwebp.so` | 打不中靶子 |
+| 给 `libskia.so` 打 1 字节补丁（新） | **可行**：一劳永逸、所有 app 同时受益、可回退；代价是要重启 + 刷入有风险 |
+| 替换 `/system/lib/libwebp.so` | 打不中靶子（Skia 静态链接了自己的 libwebp） |
 | framework 层 hook `BitmapFactory` | 影响面比 libskia 更大 |
 | 维持缓存降级（当前） | 零系统改动、可还原、已实测有效；缺点是按 app 分别处理，新下载图标会复发 |
 
-**建议**：暂不碰系统。若要一劳永逸，先离线验证（`objdump`/反汇编
-`SkWEBPImageDecoder::onDecode` 的 ARM 代码，确认 alpha 分支与 patch 空间），出包不刷入。
+**当前状态**：补丁包与取证报告已完成，**尚未刷入**。完整靶点、三条通道、签名验证与回退见 [`08-system-patch.md`](08-system-patch.md)，工具在 `source/skia-patch/`。
 
 ## 8. 复现清单
 

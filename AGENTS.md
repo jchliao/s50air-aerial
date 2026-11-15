@@ -277,8 +277,9 @@ adb shell logcat -d | grep -c "StackOverflowError"          # 应为 0
 | `dumpsys package <系统包>` 只输出一段 | 输出**两段**（/data + /system），取第一条才是生效的。 |
 | 小电视图标不显示 = Android 4.3 的 Skia 不支持 VP8X | **半对**：Skia 能解 VP8X 的颜色数据，但**丢弃 `ALPH` 透明通道**，带 alpha 的小图标变黑/白不透明块。11-14 只测「decode 非 null」得出的「不是系统缺陷」结论是错的，像素级复测见 `docs/07`。 |
 | 改小电视 APK 里的 `.webp` 资源再重签能修图标 | **无效**。图标由网络下发，落在 sdcard 的 Fresco 缓存里（`yst-final.apk` 是打偏靶子的产物，**别装**）。 |
-| 修图标要给系统/native so 打 VP8X 补丁 | 缺陷确实在 `libskia.so` 的 `SkWEBPImageDecoder`，但改 ARM native 风险极高（bootloop），**当前不做**；用 sdcard 缓存降级绕开。见 `docs/06` / `docs/07`。 |
+| 修图标要给系统/native so 打 VP8X 补丁 | **已翻案**：二进制逆向把靶点定位到 `libskia.so` `0x1139BC` 的 `setIsOpaque(true)`，补丁只需 **1 字节**；`test-keys` 还允许签 OTA 更新包。**补丁包已出、仍未刷入**，见 `docs/08`。 |
 | 替换 `/system/lib/libwebp.so` 能修图标 | **打不中靶子**。它支持 VP8X，但是给 Fresco native 用的；`BitmapFactory` 走 `libskia.so` 里静态链接的另一份解码器。 |
+| `/system` 是 ro 且 `CapEff=0`，所以没法写系统 | **不完全对**：`mount -o rw,remount` 确实被拒，但 `mmcblk0p9` 是 `system:system 0660` 可裸写、`/cache/recovery` 可写、`test-keys` 可签 OTA 包。三条通道见 `docs/08`。 |
 
 ---
 
@@ -300,7 +301,7 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 | 装 APK 提示 Killed | uid 2000 | 走 uid1000 通道 |
 | 乐视预装的包删了又回来 | `/system/etc/installpkg.conf` | 只 `disable`，不要 `uninstall` |
 | 小电视部分图标空白/破图 | 缓存里的 WebP VP8X 容器 | `bash source/yst-cache/refresh_yst_cache.sh`，见 `docs/06` |
-| 芒果TV / 乐视桌面的小图标花块、海报却正常 | 系统 `SkWEBPImageDecoder` 丢弃 VP8X 的 alpha（同一根因） | 见 `docs/07`；目前只对小电视做了缓存降级 |
+| 芒果TV / 乐视桌面的小图标花块、海报却正常 | 系统 `SkWEBPImageDecoder` 丢弃 VP8X 的 alpha（同一根因） | 见 `docs/07`；彻底修法（1 字节系统补丁，未刷入）见 `docs/08`；目前只对小电视做了缓存降级 |
 
 ---
 
@@ -325,4 +326,4 @@ TV_IP=192.168.5.9 ADB=/path/to/adb.exe bash refresh_yst_cache.sh   # pull -> 转
 - 无 alpha 的 VP8X：抽出 `VP8 ` chunk 重组 RIFF，**无损**；带 alpha 的（`ALPH`）：ffmpeg 转 RGBA PNG
 - 实测 268 个 VP8X → 0，7.22 MB → 18.01 MB，用户确认有效
 - **不动 APK、不重签、不动系统、不丢登录态**；`--restore` 可还原；新图标复发时重跑即可
-- **根因在系统侧**：Skia 的 `SkWEBPImageDecoder` 丢弃 VP8X 的 `ALPH` 通道（PNG 解码则完全正常）。修 native 代价高，当前用缓存降级绕开；详见 `docs/07-system-webp-alpha.md`
+- **根因在系统侧**：Skia 的 `SkWEBPImageDecoder` 丢弃 VP8X 的 `ALPH` 通道（PNG 解码则完全正常）。彻底修法是给 `libskia.so` 打 1 字节补丁（`docs/08`，**已出包、未刷入**）；当前用缓存降级绕开。详见 `docs/07-system-webp-alpha.md`
