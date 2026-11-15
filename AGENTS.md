@@ -302,7 +302,7 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 | 乐视预装的包删了又回来 | `/system/etc/installpkg.conf` | 只 `disable`，不要 `uninstall` |
 | 小电视部分图标空白/破图 | 缓存里的 WebP VP8X 容器 | `bash source/yst-cache/refresh_yst_cache.sh`，见 `docs/06` |
 | 小电视小图标花块、海报却正常 | 系统 `SkWEBPImageDecoder` 丢弃 VP8X 的 `ALPH` | 见 `docs/07` / `docs/06`；彻底修法（1 字节系统补丁）见 `docs/08` / `docs/09`，**已写入并重启生效** |
-| 芒果TV 首页白色阶梯块 | **不是 VP8X**：app 把 Glide/Fresco 解码降级为 `RGB_565`（无 alpha），云端「全白 RGB + 仅 alpha」的 `channelIcon` 变纯白锯齿块；改 okhttp 缓存已证伪（URL 带动态 `ttid`，每次联网重拉） | 见 `docs/11`，根因已定位，魔改 APK 已生成待决定是否卸载重装 |
+| 芒果TV 首页白色阶梯块 | **不是 VP8X**：`ImageLoaderImpl.initImageLoader()` 无条件 `setDefaultDecodeFormat(PREFER_RGB_565)`（无 alpha），云端「全白 RGB + 仅 alpha」的 `channelIcon` 变纯白锯齿块；实测 `lowMemory=false`，`isLowMemory()` 不是生效分支；改 okhttp 缓存已证伪（URL 带动态 `ttid`） | 见 **`docs/12`**（`docs/11` 下半部分基于错误版本已过时）；基于实装 5.16.3 的补丁包已离线生成，未写入电视 |
 
 ---
 
