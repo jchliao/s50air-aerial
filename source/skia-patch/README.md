@@ -68,6 +68,10 @@ python probe/compare_alpha.py
 
 完整方法与数据见 [`../../docs/08-system-patch.md`](../../docs/08-system-patch.md) 第 6 节。
 
+### `probe/make_effect_compare.py` —— 效果对比图
+
+把 A/B 导出的**真实解码像素**合成到灰白棋盘背景（用于显示透明），生成补丁前后对比图。纯标准库 + ffmpeg 读 PNG，无需 Pillow。产物 `aerial-tools/build/patch-libskia/patch-effect-compare.png`，仓库副本 `docs/images/libskia-patch-effect.png`。
+
 ### `flash_via_block.sh`
 
 **电视端模板，默认 DRY-RUN，未执行过**。走 `/dev/block/mmcblk0p9` 裸块设备写 1 字节。

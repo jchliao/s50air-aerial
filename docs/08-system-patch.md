@@ -160,6 +160,23 @@ LD_LIBRARY_PATH=/data/local/tmp/skiapatch:/vendor/lib:/system/lib:/system/lib/eg
 4. 回归：PNG 海报、裸 VP8、芒果TV / 小电视 / 乐视桌面三类图标。
 5. 按项目约定，**不主动测试任何遥控器按键**。
 
+### 小结：改完到底会变成什么样
+
+![补丁前后真实解码像素对比](images/libskia-patch-effect.png)
+
+> 图由 `source/skia-patch/probe/make_effect_compare.py` 生成，素材是 A/B 探针导出的**真实解码像素**，不是示意图。灰白棋盘是合成进去的背景，用来显示透明；左列的黑块 = alpha 被丢弃。
+
+| 会变好 | 不变 / 不受影响 |
+|---|---|
+| 带 `ALPH` 的 VP8X 小图标：透明背景正确透出，不再黑白块 | PNG / JPEG 海报大图：像素 0 差异 |
+| 半透明像素（阴影、渐变、圆形遮罩）：恢复 128 等中间 alpha，不再被压成实心黑 | 无 alpha 的 VP8X（仅 ICCP）、裸 VP8：像素 0 差异 |
+| 小电视、芒果TV 首页分类图标、乐视自带桌面图标**同时**恢复（三者都走 `BitmapFactory`） | 音量 / 背光 / 桌面 / 其它系统行为：完全不碰 |
+| **一劳永逸**：以后新下发的图标也自动正确，不必再跑缓存降级脚本 | **电视目前仍未刷入，现在打开电视还是老样子** |
+
+副作用只有一个：`setIsOpaque(false)` 是无条件的，所有 WebP 的 `hasAlpha()` 都会变成 `true`，少走一条 opaque 绘制快速路径（理论上绘制略慢），但像素结果完全不变。
+
+要全局生效必须把补丁库写进 `/system/lib/` 并重启（第 5 节三条通道）；代价是刷机风险，收益是不用再维护缓存降级脚本。
+
 ## 7. 回退
 
 - 原库完整备份在本地（`build/assets/implib/libskia.so`）；补丁只差 1 字节，回退即把 `0x00` 改回 `0x01`，或恢复原 so 后重启。
