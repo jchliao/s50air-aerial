@@ -107,7 +107,8 @@ python flash_on_tv.py --mode rollback --confirm-write-system
 ## 注意
 
 - **本目录不含任何私钥**。OTA 路线用的 AOSP 公开 `testkey.pk8` 来自 `aosp-mirror/platform_build` 的 `android-4.3_r1` 分支；实测表明 OTA 通道并不合适（recovery 是 MStar 私有镜像），见 `docs/09`。
-- 补丁库**没有刷入过电视**：三层验证证明补丁本身正确，刷入脚本已实测 `DRY_RUN_OK`，但 `apply` 尚未执行。是否写入 `/system` 由使用者决定。
+- **2026-11-15 14:39 已执行 `apply`**：1 字节写入块设备，从块设备独立 dump 整个 so 校验 sha256 = `f8e4328c…`、与原库只差 1 字节（`0x1139BC`）。**尚未重启**，zygote 仍 mmap 旧库，需手动重启才生效；执行记录见 `docs/09` 第 5 节。
+- 写入后 VFS 读 `/system/lib/libskia.so` 仍是原库哈希（page cache 未失效），**刷入后的读回校验必须从块设备读**，重启后才会一致。
 - `busybox grep` 不支持 `-b`；toolbox `grep -b` 给的是行偏移。物理偏移必须靠「拉回 dump + 本地字节级扫描 + 4K 对齐 / ELF / 整文件比对」确认，不能靠 grep 直接算。
 - A/B 验证会在电视上留下 `/sdcard/Download/{skiaprobe.dex,webptest/,skiaprobe/,skiaprobe_run.sh}` 与 `/data/local/tmp/{skiapatch/,skiadroid/}`，都只是普通数据，重启后可随时删除，不影响系统。
 - native 库不进 dalvik-cache，不需要重 dexopt，但 zygote 已 mmap，**写入 `/system` 后必须重启**才生效。

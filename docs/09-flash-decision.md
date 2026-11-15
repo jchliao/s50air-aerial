@@ -1,7 +1,7 @@
 # 刷入方案：走 OTA、改内存，还是直接写块设备？
 
 > 前置阅读：[`08-system-patch.md`](08-system-patch.md)（靶点、补丁、三层验证）
-> 状态：**补丁已验证正确，刷入通道已实测闭合，但尚未执行写入、未重启、未按遥控器按键。**
+> 状态：**补丁已通过三层验证；2026-11-15 14:39 已把 1 字节写入 `/dev/block/mmcblk0p9` 并经独立 dump 校验正确。尚未重启，因此当前运行的进程仍在用旧库 —— 需手动重启后生效。** 本文记录通道实测对比与操作步骤。
 
 ## 0. 一句话结论
 
@@ -142,3 +142,27 @@ python source/skia-patch/flash_on_tv.py --mode apply --confirm-write-system
 - 原生库不进 dalvik-cache，**不需要重 dexopt**。
 - 补丁副作用：`setIsOpaque(false)` 是无条件的，所有 WebP 的 `hasAlpha()` 都会变 `true`（像素不变，仅少一条 opaque 绘制快速路径）。
 - 按项目约定：**脚本不会自动重启、不会自动测试任何遥控器按键**。
+
+## 5. 执行记录（2026-11-15 14:38–14:39）
+
+用户确认后按顺序执行，日志在 `aerial-tools/build/patch-libskia/`：
+
+| 步骤 | 结果 |
+|---|---|
+| `--mode backup` | 512.0 MB / 39.7 s，`dd_rc=0`，`/sdcard/Download/system_backup.img` = **536,870,912 B**（`flash_backup.log`） |
+| `--mode dry`（写入前复核） | `DRY_RUN_OK`，`state=orig`，ELF 锚点 `7f 45 4c 46`，4K 块备份 byte=`01`（已 pull 到本地 `block4k.before.bin`，sha256 `9a35f850…`）（`flash_dry_before_apply.log`） |
+| `--mode apply --confirm-write-system` | 写 `0x00` @ 31947196，`write_rc=0`、`sync OK`、块设备读回 `00 10 a0 e3 90 7a fd eb` → **`FLASH_OK`**（`flash_apply.log`） |
+| 独立复核 | 从**块设备**重新 dump 整个 so 区域（4K×549 块）并拉回本地：sha256 = **`f8e4328c…`，与 `libskia-patched.so` 完全相同**；与原库只差 **1 字节**，位置 `0x1139BC`，值 `0x00`（`flash_verify_after.log`） |
+
+系统健康检查：写入后 `/system` 仍 `ro,nosuid` 挂载正常，zygote(1275) / system_server(1571) 均存活，无崩溃。
+
+**一个重要的实测现象**：写入后通过 VFS 读 `/system/lib/libskia.so` 的 sha256 仍是**原库** `4642931b…`（md5 `98ec7a44…`），而块设备读到的是补丁库。这正是文档预判的 **VFS page cache 与块设备页不一致** —— 所以「刷入后读回校验必须从块设备读」，也**必须重启**让 zygote 重新 mmap。
+
+### 重启后待办（`08` 第 6 节第 4 层）
+
+1. `/system/lib/libskia.so` sha256 应变为 `f8e4328c…`；
+2. 查 zygote / app 进程 `maps` 确认映射新的 `/system/lib/libskia.so`；
+3. 重跑 `webpprobe`：VP8X+ALPH 应 `hasAlpha=true`、alpha 与参考 0 差异；
+4. 看小电视 / 芒果TV / 乐视桌面三类图标，PNG 海报与裸 VP8 回归。
+
+回退（若重启后异常）：`python flash_on_tv.py --mode rollback --confirm-write-system` → 写回 `0x01` → 重启；或用 `/sdcard/Download/system_backup.img` 整盘 dd 恢复。

@@ -112,7 +112,7 @@ Fresco 及多数图片库在 Android 上把**静态 WebP 交给系统 `BitmapFac
 | framework 层 hook `BitmapFactory` | 影响面比 libskia 更大 |
 | 维持缓存降级（当前） | 零系统改动、可还原、已实测有效；缺点是按 app 分别处理，新下载图标会复发 |
 
-**当前状态**：补丁包与取证报告已完成，**尚未刷入**。完整靶点、三条通道、签名验证与回退见 [`08-system-patch.md`](08-system-patch.md)，工具在 `source/skia-patch/`。
+**当前状态**：补丁包、三层验证与取证报告已完成；**2026-11-15 14:39 已把 1 字节写入 system 裸块设备并独立校验正确，待手动重启生效**。完整靶点、验证、写入通道与执行记录见 [`08-system-patch.md`](08-system-patch.md) 与 [`09-flash-decision.md`](09-flash-decision.md)，工具在 `source/skia-patch/`。
 
 ## 8. 复现清单
 

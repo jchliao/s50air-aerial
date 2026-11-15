@@ -11,7 +11,8 @@
 | `05-helper-service.md` | 为什么停 TV管家服务会让 Aerial 被秒杀 |
 | `06-vp8x-icon-cache.md` | 小电视图标不显示：**手动把 WebP VP8X 降级为 VP8**（改 sdcard 缓存，不动 APK/系统）；工具在 `source/yst-cache/` |
 | `07-system-webp-alpha.md` | **根因取证**：Android 4.3 的 Skia 解码器丢弃 VP8X 的 `ALPH` 通道；像素级实测、为什么多个 app 同时中招 |
-| `08-system-patch.md` | **系统补丁方案**：反汇编 `libskia.so` 定位到 1 字节靶点、出包、`test-keys` OTA / 裸块设备 / SUID 三条写入通道与回退。**尚未刷入**；工具在 `source/skia-patch/` |
+| `08-system-patch.md` | **系统补丁方案**：反汇编 `libskia.so` 定位到 1 字节靶点、出包、三层验证、写入通道与回退。**已写入块设备、待重启**；工具在 `source/skia-patch/` |
+| `09-flash-decision.md` | **刷入定案**：OTA / 改内存 / 裸块三条通道的实测对比、物理偏移定位、`dry`/`apply`/`rollback` 操作手册与执行记录 |
 | `99-troubleshooting.md` | 按症状查的故障排查 |
 
 ## 给非乐视机型

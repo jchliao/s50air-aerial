@@ -1,7 +1,7 @@
 # 给系统打补丁：libskia.so 的 1 字节修复
 
 > 前置阅读：[`07-system-webp-alpha.md`](07-system-webp-alpha.md)（确认系统缺陷的像素级证据）
-> 状态：**补丁已通过三层验证（静态结构 / 不刷机的 A/B 动态 / 逐像素 alpha 比对），结论为「改对了」；刷入通道已实测闭合，但尚未写入 `/system`、未重启**。本文记录靶点、补丁与验证方法；写入通道的实测对比与操作步骤见 [`09-flash-decision.md`](09-flash-decision.md)。
+> 状态：**补丁已通过三层验证；2026-11-15 14:39 已把 1 字节写入 system 裸块设备并独立校验正确，仍未重启（运行的进程还用旧库）**。本文记录靶点、补丁与验证方法；写入通道的实测对比、执行记录与操作步骤见 [`09-flash-decision.md`](09-flash-decision.md)。
 
 ## 1. 结论
 
@@ -11,7 +11,7 @@
 - 补丁只需要改 **1 个字节**；
 - 这台机器是 `test-keys` / `userdebug`，`otacerts.zip` 的公钥与 AOSP 公开 testkey 匹配；但后续实测发现底层 recovery 是 MStar 私有镜像，**OTA 并不是合适的写入通道**（见第 5 节与 `09`）。
 
-所以「能不能打补丁」的答案是 **能**，而且最省事的写入方式不需要 OTA、不需要 root：uid1000 直接对 system 的裸块设备写 1 字节。剩下的是否接受重启与刷机风险，由使用者决定。
+所以「能不能打补丁」的答案是 **能**，而且最省事的写入方式不需要 OTA、不需要 root：uid1000 直接对 system 的裸块设备写 1 字节。**该写入已于 2026-11-15 14:39 执行并校验正确，待重启生效**（见 `09` 第 5 节）。
 
 ## 2. 逆向靶点（以实际二进制为准，不用 AOSP 源码猜）
 
@@ -79,7 +79,7 @@
 
 定位用「前 64 MB 分区 dump 拉回本地 → Python 扫 `SkWEBPImageDecoder` 全部 5 个命中 → 与 so 内 5 个偏移取交集 → 4K 对齐 + ELF magic + 整文件逐字节相等三重确认」得到唯一解。**注意 `busybox grep` 不支持 `-b`，toolbox `grep -b` 给的是行偏移，都不能直接当物理偏移用**（旧版 `flash_via_block.sh` 模板里的做法有误，已修正为实测常量 + 多重校验）。
 
-工具：`source/skia-patch/flash_via_block.sh`（`dry` / `apply` / `rollback` 三模式，默认 dry）+ `flash_on_tv.py`（PC 一键驱动，走 uid1000 通道）。**dry 模式已实测 DRY_RUN_OK，未写入任何字节。**
+工具：`source/skia-patch/flash_via_block.sh`（`dry` / `apply` / `rollback` 三模式，默认 dry）+ `flash_on_tv.py`（PC 一键驱动，走 uid1000 通道）。**dry 实测通过，2026-11-15 14:39 已执行 `apply` 并独立校验；待手动重启。**
 
 ## 6. 如何验证「补丁改得对不对」（三层已实测通过）
 
@@ -148,12 +148,12 @@ LD_LIBRARY_PATH=/data/local/tmp/skiapatch:/vendor/lib:/system/lib:/system/lib/eg
 
 结论：**`ALPH` 通道被逐像素完整恢复，不只是标志位变化**。
 
-### 第 4 层：刷入后才做（尚未执行）
+### 第 4 层：刷入后（写入校验已完成，待重启）
 
 前三层证明的是「补丁库本身正确」。真正写进 `/system` 之后还要单独确认写入与生效：
 
-1. 读回 `/system/lib/libskia.so` 的 sha256 必须是 `f8e4328c…`（或分区镜像里该字节为 `00`）—— 排除写错块 / 写坏 ext4。
-2. **重启**（zygote 已 mmap 旧库，native 库不进 dalvik-cache，无需重 dexopt，但必须重启）。
+1. **已完成**：从块设备独立 dump 整个 so，sha256 = `f8e4328c…` 与补丁库完全相同、与原库只差 `0x1139BC` 一字节。注意重启前经 VFS 读 `/system/lib/libskia.so` 仍是原库哈希（page cache），属预期。
+2. **待用户手动重启**（zygote 已 mmap 旧库，native 库不进 dalvik-cache，无需重 dexopt，但必须重启）。
 3. 重启后查 `/proc/<zygote 或 system_server>/maps`，确认映射的是新的 `/system/lib/libskia.so`；重跑 `webpprobe` 或直接看图标。
 4. 回归：PNG 海报、裸 VP8、芒果TV / 小电视 / 乐视桌面三类图标。
 5. 按项目约定，**不主动测试任何遥控器按键**。
@@ -169,17 +169,17 @@ LD_LIBRARY_PATH=/data/local/tmp/skiapatch:/vendor/lib:/system/lib:/system/lib/eg
 | 带 `ALPH` 的 VP8X 小图标：透明背景正确透出，不再黑白块 | PNG / JPEG 海报大图：像素 0 差异 |
 | 半透明像素（阴影、渐变、圆形遮罩）：恢复 128 等中间 alpha，不再被压成实心黑 | 无 alpha 的 VP8X（仅 ICCP）、裸 VP8：像素 0 差异 |
 | 小电视、芒果TV 首页分类图标、乐视自带桌面图标**同时**恢复（三者都走 `BitmapFactory`） | 音量 / 背光 / 桌面 / 其它系统行为：完全不碰 |
-| **一劳永逸**：以后新下发的图标也自动正确，不必再跑缓存降级脚本 | **电视目前仍未刷入，现在打开电视还是老样子** |
+| **一劳永逸**：以后新下发的图标也自动正确，不必再跑缓存降级脚本 | **已写入磁盘但尚未重启；当前打开电视仍是老样子** |
 
 副作用只有一个：`setIsOpaque(false)` 是无条件的，所有 WebP 的 `hasAlpha()` 都会变成 `true`，少走一条 opaque 绘制快速路径（理论上绘制略慢），但像素结果完全不变。
 
-要全局生效必须把补丁库写进 `/system/lib/` 并重启（第 5 节三条通道）；代价是刷机风险，收益是不用再维护缓存降级脚本。
+补丁已写入磁盘（第 5 节裸块通道，**执行记录见 `09` 第 5 节**），但要全局生效还需**手动重启**让 zygote 重新 mmap；代价是刷机风险，收益是不用再维护缓存降级脚本。
 
 ## 7. 回退
 
 - 原库完整备份在本地（`build/assets/implib/libskia.so`）；补丁只差 1 字节，回退执行 `python flash_on_tv.py --mode rollback --confirm-write-system`（把 `0x00` 写回 `0x01`）后重启即可。
 - 刷入前**整盘 dd 备份 system 分区**（512 MB，`python flash_on_tv.py --mode backup`）；脚本另会强制备份补丁点所在 4K 块。
-- 验证脚本与产物都在 `source/skia-patch/` 与 `build/patch-libskia/`，A/B 验证与 dry-run 全程**不写 `/system`、不重启、不按遥控器**。
+- 验证脚本与产物都在 `source/skia-patch/` 与 `build/patch-libskia/`，A/B 验证与 dry-run 全程**不写 `/system`、不重启、不按遥控器**；`apply` 已写入 1 字节（见 `09` 第 5 节），仍需手动重启。
 
 ## 8. 资料与工具位置
 
