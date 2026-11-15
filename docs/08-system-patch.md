@@ -1,7 +1,7 @@
 # 给系统打补丁：libskia.so 的 1 字节修复
 
 > 前置阅读：[`07-system-webp-alpha.md`](07-system-webp-alpha.md)（确认系统缺陷的像素级证据）
-> 状态：**补丁已通过三层验证（静态结构 / 不刷机的 A/B 动态 / 逐像素 alpha 比对），结论为「改对了」；仍未刷入电视**。本文记录靶点、补丁、验证方法与三条写入通道。
+> 状态：**补丁已通过三层验证（静态结构 / 不刷机的 A/B 动态 / 逐像素 alpha 比对），结论为「改对了」；刷入通道已实测闭合，但尚未写入 `/system`、未重启**。本文记录靶点、补丁与验证方法；写入通道的实测对比与操作步骤见 [`09-flash-decision.md`](09-flash-decision.md)。
 
 ## 1. 结论
 
@@ -9,9 +9,9 @@
 
 - 缺陷精确定位到 **1 条指令**；
 - 补丁只需要改 **1 个字节**；
-- 而且这台机器是 `test-keys`，**能签出系统认可的 OTA 更新包**。
+- 这台机器是 `test-keys` / `userdebug`，`otacerts.zip` 的公钥与 AOSP 公开 testkey 匹配；但后续实测发现底层 recovery 是 MStar 私有镜像，**OTA 并不是合适的写入通道**（见第 5 节与 `09`）。
 
-所以「能不能打补丁」的答案是 **能**，剩下的只是选哪条写入通道、以及是否接受重启与刷机风险。
+所以「能不能打补丁」的答案是 **能**，而且最省事的写入方式不需要 OTA、不需要 root：uid1000 直接对 system 的裸块设备写 1 字节。剩下的是否接受重启与刷机风险，由使用者决定。
 
 ## 2. 逆向靶点（以实际二进制为准，不用 AOSP 源码猜）
 
@@ -59,29 +59,27 @@
 
 普通 `cp` 到 `/system/lib` 走不通。
 
-## 5. 三条写入通道
+## 5. 写入通道：实测结论（详见 `09`）
 
-### A. 伪装为系统更新（推荐，签名条件已打通）
+最初评估时把「伪装为系统更新 / 签名 OTA」列为推荐，因为 `otacerts.zip` 是 AOSP testkey、模数与公开 `testkey.pk8` 匹配。2026-11-15 补做实测后**结论已修正**，完整证据见 [`09-flash-decision.md`](09-flash-decision.md)：
 
-- `ro.build.tags=test-keys` / `userdebug` / 标准 AOSP `full_mstarnapoli` fingerprint。
-- `/system/etc/security/otacerts.zip` 只有 `testkey.x509.pem`（AOSP 标准 testkey，serial `936EACBE07F201DF`）。
-- 从 `aosp-mirror/platform_build` 的 `android-4.3_r1` 取公开 `testkey.pk8`，openssl 模数比对 **MATCH = True** → **能签出 `RecoverySystem.verifyPackage()` 接受的 OTA 包**。
-  （私钥来自 AOSP 公开仓库，**不在本仓库**，也不做任何密钥分发。）
-- `/cache` 是 rw；`/cache/recovery/` = `drwxrwx--- system:cache`，uid1000 在 cache 组，实测可写。
-- 触发：给平台签名的 `tvhelper.apk` 加 `android.permission.REBOOT`，调 `RecoverySystem.installPackage()`；或直接写 `/cache/recovery/command`。
-- `updater-script` 只需替换 `/system/lib/libskia.so`（或 `apply_patch` 打 1 字节）。recovery 有 root，能正常 remount、验签、原子替换。
+| 通道 | 实测结论 |
+|---|---|
+| A. 签名 OTA | **不推荐**。recovery 分区 `mmcblk0p6` 只有 8 MB，完整 dump 后非零率 99.6%，`ANDROID!` / `res/keys` / `META-INF` / `update-binary` / `edify` / ELF / ZIP 特征全部 0 命中 → MStar 私有镜像。`install-recovery.sh` 还要跑 `update_recovery_sign` 做私有签名；实际升级入口是 `com.stv.systemupgrade` / `LetvRemoteUpgradeService` 的私有包格式。testkey 只解决框架层 `verifyPackage()`，不等于底层会执行标准 Edify 脚本。 |
+| B. 改内存 | **做不到**。zygote 是 root + 全 capabilities，各 app 是独立 `u0_aXX`，uid1000 无 `CAP_SYS_PTRACE`，`/proc/<pid>/mem` 全部 0600 且不同 uid；uid2000 连 `maps` 都是 Permission denied。就算能写也只产生单个 COW 私有页、重启即失效。`setprop wrap.*` 实测返回 0 但属性未落地，免刷机的 `wrap` + `LD_LIBRARY_PATH` 路线也不通。 |
+| **C. 裸块 1 字节写（推荐）** | **全部前置条件已闭合**。`mmcblk0p9` 是 `system:system 0660`，uid1000 `test -w` = 0，`dd count=0` 打开写 = 0。 |
 
-**尚未确认（下一步）**：recovery 分区前 8 MB 是 MStar 私有镜像（无 `ANDROID!`、无明文 `res/keys`），需 dump 完整分区确认是否支持标准 Edify OTA、验签公钥是否同为 testkey；还需要 ARM `update-binary`；`com.stv.systemupgrade` 可能用乐视私有包格式，需反编译确认。
+裸块路线的实测常量：
 
-### B. 裸块设备 1 字节写（不依赖 recovery）
+| 项 | 值 |
+|---|---|
+| `libskia.so` 在 `mmcblk0p9` 的物理起始 | **30,818,304** (`0x1D64000`，4K 对齐)，整文件 2,247,420 B 与备份逐字节相同 |
+| **补丁点物理偏移** | **31,947,196** (`0x1E779BC`，= 起始 + `0x1139BC`) |
+| 该处读回 8 字节 | `01 10 a0 e3 90 7a fd eb` ✓ |
 
-- `/dev/block/mmcblk0p9` = `brw-rw---- system:system 0660` → **uid1000 可直接读写裸块设备**；实测 `busybox dd` 读 64 MB 成功（14.4 MB/s）。
-- 设备 `grep -b` 可用 → 用 ASCII 锚点（如 `SkWEBPImageDecoder`）在分区 dump 里定位 so 的物理偏移，再加 `0x1139BC`，只写 1 字节 `0x00`。
-- 风险：绕过 VFS page cache（必须重启）、误写会破坏 ext4。**必须先整盘 `dd` 备份 system 分区**（504 MB，本地约 36 s）。
+定位用「前 64 MB 分区 dump 拉回本地 → Python 扫 `SkWEBPImageDecoder` 全部 5 个命中 → 与 so 内 5 个偏移取交集 → 4K 对齐 + ELF magic + 整文件逐字节相等三重确认」得到唯一解。**注意 `busybox grep` 不支持 `-b`，toolbox `grep -b` 给的是行偏移，都不能直接当物理偏移用**（旧版 `flash_via_block.sh` 模板里的做法有误，已修正为实测常量 + 多重校验）。
 
-### C. SUID 提权（备选，不推荐）
-
-`/system/xbin/tcpdump`、`librank`、`procmem`、`procrank` 是 SUID，`/system/etc/dvfs_scaling.sh` 也有 setuid 位。理论上旧版 tcpdump 的 `-Z root -z <cmd>` 可 root 执行 → remount + cp，但属于漏洞利用、行为不稳定。
+工具：`source/skia-patch/flash_via_block.sh`（`dry` / `apply` / `rollback` 三模式，默认 dry）+ `flash_on_tv.py`（PC 一键驱动，走 uid1000 通道）。**dry 模式已实测 DRY_RUN_OK，未写入任何字节。**
 
 ## 6. 如何验证「补丁改得对不对」（三层已实测通过）
 
@@ -179,9 +177,9 @@ LD_LIBRARY_PATH=/data/local/tmp/skiapatch:/vendor/lib:/system/lib:/system/lib/eg
 
 ## 7. 回退
 
-- 原库完整备份在本地（`build/assets/implib/libskia.so`）；补丁只差 1 字节，回退即把 `0x00` 改回 `0x01`，或恢复原 so 后重启。
-- 刷入前**整盘 dd 备份 system 分区**（504 MB）；若走 OTA，另备一份可恢复的更新包。
-- 验证脚本与产物都在 `source/skia-patch/` 与 `build/patch-libskia/`，A/B 验证全程**不写 `/system`、不重启、不按遥控器**。
+- 原库完整备份在本地（`build/assets/implib/libskia.so`）；补丁只差 1 字节，回退执行 `python flash_on_tv.py --mode rollback --confirm-write-system`（把 `0x00` 写回 `0x01`）后重启即可。
+- 刷入前**整盘 dd 备份 system 分区**（512 MB，`python flash_on_tv.py --mode backup`）；脚本另会强制备份补丁点所在 4K 块。
+- 验证脚本与产物都在 `source/skia-patch/` 与 `build/patch-libskia/`，A/B 验证与 dry-run 全程**不写 `/system`、不重启、不按遥控器**。
 
 ## 8. 资料与工具位置
 
@@ -192,7 +190,10 @@ LD_LIBRARY_PATH=/data/local/tmp/skiapatch:/vendor/lib:/system/lib:/system/lib/eg
 - `source/skia-patch/probe/ProbeMain.java` + `build_probe.py` —— 第 2 层：电视端 A/B 探针
 - `source/skia-patch/probe/verify_on_tv.py` —— 一键 push + 跑 A/B + 判定
 - `source/skia-patch/probe/compare_alpha.py` —— 第 3 层：逐像素 alpha 比对
-- `source/skia-patch/flash_via_block.sh` —— 电视端模板，**默认 DRY-RUN，从未执行**
+- `source/skia-patch/probe/make_effect_compare.py` —— 补丁前后效果对比图生成
+- `source/skia-patch/flash_via_block.sh` —— 电视端刷入脚本（实测偏移、`dry`/`apply`/`rollback`，默认 dry）
+- `source/skia-patch/flash_on_tv.py` —— PC 端一键驱动（push 样本、走 uid1000 通道、判定日志）
+- `docs/09-flash-decision.md` —— OTA / 改内存 / 裸块三条通道的实测对比与刷入操作手册
 
 调查用的完整取证报告与原始日志不在仓库内（含设备快照），在 `aerial-tools/build/`：
 

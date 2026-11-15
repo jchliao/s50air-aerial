@@ -72,23 +72,43 @@ python probe/compare_alpha.py
 
 把 A/B 导出的**真实解码像素**合成到灰白棋盘背景（用于显示透明），生成补丁前后对比图。纯标准库 + ffmpeg 读 PNG，无需 Pillow。产物 `aerial-tools/build/patch-libskia/patch-effect-compare.png`，仓库副本 `docs/images/libskia-patch-effect.png`。
 
-### `flash_via_block.sh`
+### `flash_via_block.sh` + `flash_on_tv.py` —— 刷入（默认 dry-run）
 
-**电视端模板，默认 DRY-RUN，未执行过**。走 `/dev/block/mmcblk0p9` 裸块设备写 1 字节。
-使用前必须：
+**OTA 与「改内存」两条路都已实测否决，推荐直接对裸块设备写 1 字节。** 完整证据与操作手册见 [`../../docs/09-flash-decision.md`](../../docs/09-flash-decision.md)。
 
-1. 整盘备份 system 分区；
-2. 用 `grep -a -b -o -F 'SkWEBPImageDecoder' system_full.img` 定位 so 的物理起始偏移；
-3. 把 `PHYS_OFFSET` 改成 `起始 + 0x1139BC`；
-4. 先保留 `DRY_RUN=1` 跑一遍，确认读出的字节是 `01`；
-5. 再改 `DRY_RUN=0` 写入。
+实测常量（本机、本分区，勿套用到别的机器）：
 
-风险与回退见 `docs/08`。
+```
+system 分区          /dev/block/mmcblk0p9   512 MB, system:system 0660
+libskia.so 物理起始  30818304  (0x1D64000)  整文件与备份逐字节相同
+补丁点物理偏移        31947196  (0x1E779BC)  = 起始 + 0x1139BC
+原 8 字节             01 10 a0 e3 90 7a fd eb
+uid1000 写权限        test -w = 0, dd count=0 = 0
+```
+
+```bash
+# ① 整盘备份（512MB，留在电视 sdcard；不要 pull，0.5MB/s 太慢）
+python flash_on_tv.py --mode backup
+
+# ② 干跑：只校验，不写任何字节（已实测 DRY_RUN_OK）
+python flash_on_tv.py --mode dry
+
+# ③ 确认无误后才写 1 字节；需要显式二次确认
+python flash_on_tv.py --mode apply --confirm-write-system
+
+# ④ 手动重启电视（脚本不会自动重启、不会按任何遥控器按键）
+
+# 回退
+python flash_on_tv.py --mode rollback --confirm-write-system
+```
+
+电视端脚本会独立校验 uid=1000、块设备可写、ELF 锚点、补丁点前后 8 字节，先备份所在 4K 块，写入后 `sync` 并**从块设备读回**比对（不能从 `/system/lib/` 读，page cache 可能仍旧值）。`apply` 前 PC 端还会检查 512MB 整盘备份是否存在。
 
 ## 注意
 
-- **本目录不含任何私钥**。OTA 路线用的 AOSP 公开 `testkey.pk8` 来自 `aosp-mirror/platform_build` 的 `android-4.3_r1` 分支，需自行下载并用 openssl 模数比对后再用。
-- 补丁库**没有刷入过电视**；三层验证已证明补丁本身正确，是否刷入、走 OTA 还是裸块设备，由使用者决定。
+- **本目录不含任何私钥**。OTA 路线用的 AOSP 公开 `testkey.pk8` 来自 `aosp-mirror/platform_build` 的 `android-4.3_r1` 分支；实测表明 OTA 通道并不合适（recovery 是 MStar 私有镜像），见 `docs/09`。
+- 补丁库**没有刷入过电视**：三层验证证明补丁本身正确，刷入脚本已实测 `DRY_RUN_OK`，但 `apply` 尚未执行。是否写入 `/system` 由使用者决定。
+- `busybox grep` 不支持 `-b`；toolbox `grep -b` 给的是行偏移。物理偏移必须靠「拉回 dump + 本地字节级扫描 + 4K 对齐 / ELF / 整文件比对」确认，不能靠 grep 直接算。
 - A/B 验证会在电视上留下 `/sdcard/Download/{skiaprobe.dex,webptest/,skiaprobe/,skiaprobe_run.sh}` 与 `/data/local/tmp/{skiapatch/,skiadroid/}`，都只是普通数据，重启后可随时删除，不影响系统。
 - native 库不进 dalvik-cache，不需要重 dexopt，但 zygote 已 mmap，**写入 `/system` 后必须重启**才生效。
 - 副作用：`setIsOpaque(false)` 是无条件的，所有 WebP 的 `hasAlpha()` 都会变成 `true`（像素不变，仅少一条 opaque 绘制快速路径）。
