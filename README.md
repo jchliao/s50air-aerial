@@ -85,7 +85,7 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon
 
 - **TV管家服务 `com.stv.helper.service` 绝对不能停用**。它是 AMS `mTvMasterProxy` 的绑定对象，禁用后代理为 null → `notifyActivityChanged` 失败 → 前台应用被判 `isIllegalApp` → Aerial 一离开前台就被 force-stop 秒杀。只能停用它的 UI 包 `com.stv.helper.main`。
 - 平台签名用的密钥来自本机 dump，**不在仓库里**（见 `docs/03-appdaemon.md` 的「自己签」一节）。
-- 云视听小电视的部分图标需要单独处理（WebP VP8X → VP8 缓存降级），且新下载的图标可能复发，需重跑脚本。见 `docs/06-vp8x-icon-cache.md`。**没有给系统打 VP8X 补丁**。
+- 云视听小电视的部分图标需要单独处理（WebP VP8X → VP8 / PNG 缓存降级），且新下载的图标可能复发，需重跑脚本。见 `docs/06-vp8x-icon-cache.md`。根因是**系统 Skia 丢弃 VP8X 的透明通道**（多个 app 的小图标都会中招），但改 native 代价高，**当前没有给系统打补丁**；证据与取舍见 `docs/07-system-webp-alpha.md`。
 - 只验证过 S50 Air（LetvUi 3.x / Android 4.3）。其他乐视机型大概率同构，但包名和 smali 偏移需要重新核对。
 
 ## 许可

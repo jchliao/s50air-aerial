@@ -189,7 +189,18 @@ bash refresh_yst_cache.sh        # pull -> VP8X 降级为 VP8/PNG -> push
 adb shell "am force-stop com.xiaodianshi.tv.yst"   # 重开或重启电视，让 Fresco 重建索引
 ```
 
-`bash refresh_yst_cache.sh --restore` 可还原原始缓存。完整原理、实测数据、为什么**不给系统打 VP8X 补丁**见 `docs/06-vp8x-icon-cache.md`。
+`bash refresh_yst_cache.sh --restore` 可还原原始缓存。完整原理、实测数据见 `docs/06-vp8x-icon-cache.md`；
+**根因是系统的 `SkWEBPImageDecoder` 丢弃 VP8X 的 `ALPH` 通道**，以及为什么当前不修系统，见 `docs/07-system-webp-alpha.md`。
+
+### 芒果TV / 乐视自带桌面：小图标花块、海报大图却正常
+
+同一个根因（见 `docs/07`）：系统解 PNG / JPEG 完全正常，但带透明通道的 WebP 小图标
+会被强制成不透明黑/白块。Fresco 等图片库把静态 WebP 交给系统 `BitmapFactory`，
+所以多个 app 会同时中招，与 app 版本无关。
+
+芒果TV 的图片缓存在 `/data/data/com.starcor.mango/`（system uid 读不到、`adb root` 不可用），
+目前**没有通用的缓存降级脚本**；皮肤包是 PNG/JPEG，不受影响。
+若只想验证是不是同一问题，可对照 `docs/07` 第 2 节的探针方法取样。
 
 ---
 

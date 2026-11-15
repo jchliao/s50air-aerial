@@ -5,7 +5,8 @@
 适用：S50 Air / Android 4.3 / API 18；只针对小电视的图标，不影响 Aerial 桌面。  
 工具：`source/yst-cache/`（`patch_yst_cache.py` + `refresh_yst_cache.sh` + 说明）。
 
-> **不做的事**：不给电视的系统镜像 / Skia / libwebp / app 的 native so 打 VP8X 补丁。理由见第 8 节。
+> **不做的事**：不替换 APK，也不给系统镜像 / Skia / libwebp / app 的 native so 打补丁。
+> 缺陷虽已定位在**系统侧**（见第 3 节），但改 native 代码代价过高，当前用可还原的缓存降级绕开；理由见第 8 节。
 
 
 
@@ -27,17 +28,37 @@
 - 这些是 sdcard 上的**普通文件**，与 APK 签名无关，改它不会触发 `PackageParser.collectCertificates` 的逐条 SHA1 校验，也不用卸载重装、**不丢登录态**。
 - `.cnt` 只是文件名。Android 的 `BitmapFactory` 按**数据魔数**判断格式、不看扩展名，所以文件名保持不变、只替换内容即可（原包里本来就有「名字是 `.webp`、内容是 PNG」的条目，app 自己就这么用）。
 
-## 3. 一个被证伪的假设（重要）
+## 3. 根因：系统 Skia 丢弃 VP8X 的 alpha（2026-11-15 修正）
 
-一开始的判断是「Android 4.3 的 Skia 不认 VP8X 扩展容器」。**这个判断是错的**。
+> **这里曾写过「不是系统缺陷」，那个结论是错的。**完整实验数据见 `docs/07-system-webp-alpha.md`。
 
-临时写了个平台签名探针（`webpprobe`，已卸载清理），在电视上直接调系统 `BitmapFactory.decodeFile()` 解 9 个 VP8X 样本（含带 `ALPH` 的），**全部解码成功**；只是 `hasAlpha()` 一律返回 false，说明透明通道可能被丢掉。
+11-14 的第一版探针只判断 `BitmapFactory.decodeFile()` 是否返回 null，**没检查像素**，
+于是把 `hasAlpha() == false` 当成了无害差异。11-15 做了像素级复测：把系统解码结果导出成
+PNG，与 ffmpeg 的正确解码逐字节对比（探针 v2，平台签名，测完已卸载）。
 
-所以：
+实测（Android 4.3 / SDK 18 / MStar napoli，默认 bitmap 配置就是 `ARGB_8888`）：
 
-- 系统解码器本身能解 VP8X，**不是系统缺陷**，也不该去给系统打补丁。
-- 失败更可能发生在 **app 自己的 native 解码 / Fresco 图片管线**这一环（老版本 Fresco 对 VP8X 的 chunk 解析或 alpha 处理有问题），但**没有精确定位到具体代码**。
-- 不管哪一环的问题，把 VP8X 降级成最简单的 VP8 容器后，全链路都能吃下去了 —— 这正是本方案有效的原因。
+| 输入 | 系统 `BitmapFactory` 结果 |
+|---|---|
+| PNG（四色棋盘 + 半透明圆） | 与原图 **diff 0 / 16384 字节**，alpha 完整保留 |
+| VP8X + ICCP（无 alpha） | 颜色正确（与 ffmpeg 平均偏差 0.91/255），且与「降级成裸 VP8 后再解」**逐字节相同** |
+| VP8X + ALPH（带 alpha） | **全部像素 alpha 被强制 255**、`hasAlpha()=false`；正确解码里 780 个全透明像素中，448 个变成纯黑不透明块 |
+
+结论：系统 `SkWEBPImageDecoder` 会忽略 VP8X 扩展头、直接吃 `VP8 ` 码流（颜色对），
+但**不处理 `ALPH` chunk、也不调用 `setHasAlpha(true)`**。带透明通道的 WebP 小图标
+因此变成黑/白底方块 —— 这就是「图标破图、海报大图正常」的原因。
+
+一个容易混淆的点：`/system/lib/libwebp.so` 确实是完整版（有 `WebPDemux*` / `ALPHNew`，
+支持 VP8X），但那是给 **Fresco 的 native `WebPImage`** 用的；`BitmapFactory` 走的是
+`libskia.so` 里**静态链接**的另一份解码器。前者支持不代表后者支持。
+
+**为什么降级方案依然有效**：
+
+- 无 alpha 的 `ICCP+VP8`（154 个）抽 `VP8 ` chunk 重组裸 RIFF —— 对系统解码器其实无感，
+  但让 Fresco 那条容器解析路径拿到最简单的输入，不再出错；
+- 带 `ALPH` 的（114 个）转 **RGBA PNG** —— 改走 `SkPNGImageDecoder`，实测 alpha 保真。
+
+所以带 alpha 的**不能只降级、必须转 PNG**。
 
 ## 4. 降级原理
 
@@ -152,12 +173,13 @@ $ADB -s $DEV shell "am force-stop com.xiaodianshi.tv.yst"
 
 | 设想                                            | 结论                                              |
 | --------------------------------------------- | ----------------------------------------------- |
-| 给系统 Skia / libwebp 打补丁让它「支持 VP8X」             | **没靶子**。探针证明系统 `BitmapFactory` 本来就能解 VP8X。      |
+| 给系统 Skia 补 alpha 处理、让它正确显示 VP8X                  | **靶子确实存在**（已定位到 `libskia.so` 的 `SkWEBPImageDecoder`），但要改 ARM native 代码 / 二进制 patch，改错直接 bootloop，`/system` 只剩 15.1M。先离线验证可行性，出包不刷入。见 `docs/07`。 |
+| 替换 `/system/lib/libwebp.so`                          | **打不中靶子**，`BitmapFactory` 不走它（见第 3 节）。             |
 | 替换小电视 `/data/data/.../lib/*.so` 里的 native 解码库 | 目标函数未定位，且 app 升级会覆盖，风险/收益不划算。                   |
 | 常驻 `FileObserver` 自动转码新缓存                     | 要常驻后台、要处理并发和 LRU，还可能被后台清理策略杀掉；而缓存降级脚本一次几秒、可重复跑。 |
 | 改 APK 资源 / 重签                                 | 无效（见第 2 节）。                                     |
 
-**最终取舍**：不动系统、不动 APK，只对 sdcard 上的缓存做一次可还原的手动降级。缺点是新下载的 VP8X 图标还可能复现 —— 复现时再跑一次 `refresh_yst_cache.sh` 即可。
+**最终取舍**：缺陷虽在系统，但修系统的风险/收益不划算；不动系统、不动 APK，只对 sdcard 上的缓存做一次可还原的手动降级。缺点是新下载的 VP8X 图标还可能复现 —— 复现时再跑一次 `refresh_yst_cache.sh` 即可。
 
 ## 9. 还原与复发
 

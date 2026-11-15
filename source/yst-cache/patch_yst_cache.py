@@ -10,10 +10,11 @@
      PackageParser.collectCertificates 的逐条 SHA1 校验。
   2) Android 的 BitmapFactory 按数据魔数判断格式、不看扩展名，因此
      文件名保持 .cnt 不变、只替换内容即可。
-  3) 出问题的都是 WebP VP8X 扩展容器里的图标。注意：系统 Skia 本身能解 VP8X
-     （平台签名探针实测 BitmapFactory.decodeFile() 全部成功），所以这**不是系统缺陷**，
-     更可能是老版本 Fresco / app native 解码链路对 VP8X 的处理有问题。
-     把容器退化成最简单的 VP8 后，全链路都能正常吃下去。
+  3) 出问题的都是 WebP VP8X 扩展容器里的图标。根因见 ../../docs/07：
+     系统 Skia 的 SkWEBPImageDecoder 能解 VP8X 的颜色数据，但**丢弃 ALPH 透明通道**
+     （像素级实测：带 alpha 的图全部像素被强制 alpha=255，透明区变黑块）；
+     PNG 解码则完全正常。Fresco 对 VP8X 容器的解析也有兼容问题。
+     把容器退化成最简单的 VP8、带 alpha 的改存 RGBA PNG 后，两条路径都能绕开。
      本机缓存 454 个文件：VP8X 268 / 裸 VP8 153 / PNG 32 / JPEG 1。
      VP8X 内部分三种：
         ICCP + VP8       154  -> 无损降级为裸 VP8（丢弃 ICC 色彩块，VP8 码流原样保留）

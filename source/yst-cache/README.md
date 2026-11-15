@@ -1,6 +1,7 @@
 # yst-cache：小电视图标 VP8X → VP8 降级工具
 
-完整说明（原理、实测数据、坑、为什么不给系统打补丁）在 [`../../docs/06-vp8x-icon-cache.md`](../../docs/06-vp8x-icon-cache.md)。
+完整说明（原理、实测数据、坑）在 [`../../docs/06-vp8x-icon-cache.md`](../../docs/06-vp8x-icon-cache.md)；
+**根因取证**（系统 Skia 丢弃 VP8X 的 alpha、为什么多个 app 同时中招、要不要打系统补丁）在 [`../../docs/07-system-webp-alpha.md`](../../docs/07-system-webp-alpha.md)。
 
 ## 文件
 
