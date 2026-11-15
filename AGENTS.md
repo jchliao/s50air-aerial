@@ -302,7 +302,7 @@ DRY_RUN=0 bash scripts/99-restore.sh --only-appdaemon # 只回退 appdaemon
 | 乐视预装的包删了又回来 | `/system/etc/installpkg.conf` | 只 `disable`，不要 `uninstall` |
 | 小电视部分图标空白/破图 | 缓存里的 WebP VP8X 容器 | `bash source/yst-cache/refresh_yst_cache.sh`，见 `docs/06` |
 | 小电视小图标花块、海报却正常 | 系统 `SkWEBPImageDecoder` 丢弃 VP8X 的 `ALPH` | 见 `docs/07` / `docs/06`；彻底修法（1 字节系统补丁）见 `docs/08` / `docs/09`，**已写入并重启生效** |
-| 芒果TV 首页白色阶梯块 | **不是 VP8X**：云端 3790 个图片 URL 全为 jpg/png、0 个 webp，清缓存无效；同一位置在其它频道显示正常 logo | 见 `docs/11`，调查中 |
+| 芒果TV 首页白色阶梯块 | **不是 VP8X**：默认态 `channelIcon` 是「全白 RGB + 仅 alpha」PNG（10% 半透明边缘），渲染链路丢 alpha 产生硬边锯齿；电视探针证明系统解码层 alpha 完整 | 见 `docs/11`，已写入缓存层修复，待重进 app 验证 |
 
 ---
 
