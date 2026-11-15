@@ -47,4 +47,5 @@ r=adb('shell',f'busybox cp {TMP} {REMOTE}; echo CP_RC=$?; busybox ls -l {REMOTE}
 print('cp:',r.stdout.strip()[:300], r.stderr.strip()[:200])
 report('ON TV ',pull_current())
 print('\n备份原文件:',ORIG)
-print('下一步：在电视上退出芒果TV再重进（或 force-stop 后重开），首页白块应变成蓝色胶囊 logo。')
+print('注意：本方案已证伪（getChannels URL 带动态 ttid，app 每次启动联网重拉，旧缓存不会被读）。')
+print('保留此脚本仅作反例与缓存回滚工具；真正修复见 build_patched_apk.py / docs/11。')
